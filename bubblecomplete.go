@@ -1,154 +1,28 @@
 package bubblecomplete
 
 import (
+	"encoding/json"
 	"errors"
-	"fmt"
 	"os"
-	"strconv"
+	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 )
 
 // MARK: Types and Vars
 
-var terminalSize tea.WindowSizeMsg
-
-// Colors
-var (
-	mainBacgkround = lipgloss.AdaptiveColor{Light: "#F9F9F9", Dark: "#282828"}
-	altBackground  = lipgloss.AdaptiveColor{Light: "#F0F0F0", Dark: "#181818"}
-	green          = lipgloss.AdaptiveColor{Light: "#02BA84", Dark: "#02BF87"}
-	red            = lipgloss.AdaptiveColor{Light: "#FE5F86", Dark: "#FE5F86"}
-	pink           = lipgloss.AdaptiveColor{Light: "#FF2C70", Dark: "#FF2C70"}
-	bluegray       = lipgloss.AdaptiveColor{Light: "#5C6773", Dark: "#1f262d"}
-)
-
-// Styles
-var (
-	lg                         = lipgloss.NewStyle()
-	validCommandStyle          = lg.Foreground(green)
-	highlightedCompletionStyle = lg.Foreground(pink).Background(bluegray).Bold(true)
-	completionRowStyle         = lg.Background(mainBacgkround)
-	altCompletionRowStyle      = lg.Background(altBackground)
-	completionsBoxStyle        = lg.Border(lipgloss.RoundedBorder())
-)
-
-type Model struct {
-	// Input
-	input     textinput.Model
-	lastInput string
-
-	// Command Related
-	Commands     []*Command
-	validCommand error
-
-	// Completions
-	completions      []Completion
-	completionIndex  int
-	completionHolder string
-
-	// History
-	History         []string
-	filteredHistory []string
-	historyIndex    int
-
-	// Other
-	loaded bool
-
-	// Options
-	HistoryLimit        int
-	IndentCompletions   bool
-	Autotrim            bool
-	CompletionsOffset   int
-	WrapCompletions     bool
-	ValidCommandStyling bool
-}
-
-type Completion interface {
-	getName() string
-	getDescription() string
-}
-
-type Command struct {
-	Command     string
-	SubCommands []*Command
-	Arguments   []*Argument
-	Description string
-}
-
-func (c Command) getName() string {
-	return c.Command
-}
-
-func (c Command) getDescription() string {
-	return c.Description
-}
-
-type Argument struct {
-	Argument    string
-	Description string
-	Type        argumentType
-}
-
-type argumentType string
-
-const (
-	StringArgument argumentType = "string"
-	IntArgument    argumentType = "int"
-	FloatArgument  argumentType = "float"
-	BoolArgument   argumentType = "bool"
-	FileArgument   argumentType = "file"
-)
-
-func (a Argument) getName() string {
-	return a.Argument
-}
-
-func (a Argument) getDescription() string {
-	// TODO: Improve styling of argument type
-	return fmt.Sprintf("%s [%s]", a.Description, a.Type)
-}
-
-// TODO: Public or Private?
 type SelectedCommandMsg struct {
-	command string
-	err     error
+	Command string
+	Err     error
+}
+
+type historyFileJson struct {
+	History []string `json:"history"`
 }
 
 // MARK: Public Functions
-
-func New(commands []*Command) Model {
-	input := textinput.New()
-	input.Focus()
-	input.CharLimit = 1000
-	input.Width = 100
-	input.ShowSuggestions = true
-
-	inputKeyMap := textinput.DefaultKeyMap
-	inputKeyMap.AcceptSuggestion = key.NewBinding()
-	inputKeyMap.NextSuggestion = key.NewBinding()
-	inputKeyMap.PrevSuggestion = key.NewBinding()
-
-	input.KeyMap = inputKeyMap
-
-	// TODO: Make getters and setters for certain options
-	return Model{
-		input:               input,
-		Commands:            commands,
-		completionIndex:     -1,
-		historyIndex:        -1,
-		HistoryLimit:        100,
-		Autotrim:            true,
-		IndentCompletions:   true,
-		CompletionsOffset:   2,
-		ValidCommandStyling: true,
-		WrapCompletions:     true,
-	}
-}
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
@@ -158,8 +32,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch msg.String() {
-		case "tab":
-			m, cmd = m.keyTab()
+		case "tab", "ctrl+n", "shift+tab", "ctrl+p":
+			m, cmd = m.keyTab(msg.String())
 		case "backspace":
 			m, cmd = m.keyBackspace()
 		case "enter":
@@ -168,13 +42,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m, cmd = m.keyUp()
 		case "down":
 			m, cmd = m.keyDown()
-		case "right":
+		case "right", "ctrl+e":
 			m, cmd = m.keyRight()
 		default:
-			m, cmd = m.keyDefault()
+			m, cmd = m.keyDefault(msg.String())
 		}
-	case tea.WindowSizeMsg:
-		terminalSize = msg
 	}
 	cmds = append(cmds, cmd)
 
@@ -183,8 +55,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	cmds = append(cmds, cmd)
 
 	// If the input has changed, update the completions and validate the input
-	if m.input.Value() != "" && m.input.Value() != m.lastInput && m.completionHolder == "" {
-		// TODO: Debounce this
+	if m.input.Value() != "" && m.input.Value() != m.lastInput && m.completionHolder == "" && !m.showAll {
 		m.lastInput = m.input.Value()
 		m.completions = m.getCompletions()
 		m.validCommand = m.validateInput()
@@ -199,270 +70,119 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-func (m Model) View() string {
-	if m.historyIndex != -1 {
-		return m.input.View()
+// SetHistoryFilePath sets the file path to the file used for persisting the command history.
+//
+// It creates the file if it doesn't exist. The directory of the file path must exist.
+// The file path must be a valid JSON file with a .json extension.
+func (m *Model) SetHistoryFilePath(path string) {
+	cleanPath := filepath.Clean(path)
+
+	file := filepath.Base(cleanPath)
+	if file == "" {
+		m.Err = errors.New("invalid history file path")
+		return
+	}
+	if filepath.Ext(file) != ".json" {
+		m.Err = errors.New("history file must be a JSON file")
+		return
 	}
 
-	return m.showCompletionsRender()
+	dir := filepath.Dir(cleanPath)
+	if _, err := os.Stat(dir); os.IsNotExist(err) {
+		m.Err = err
+		return
+	}
+
+	m.historyFilePath = cleanPath
+
+	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
+		if _, err := os.Create(cleanPath); err != nil {
+			m.Err = err
+			return
+		}
+		err = m.saveHistoryToFile()
+		if err != nil {
+			m.Err = err
+			return
+		}
+	}
+
+	err := m.loadHistoryFromFile()
+	if err != nil {
+		m.Err = err
+		return
+	}
+}
+
+// ClearHistory clears the command history from all previous commands.
+//
+// If the history file path is set, it also clears the history on file.
+func (m *Model) ClearHistory() {
+	m.History = []string{}
+	m.saveHistoryToFile()
+}
+
+// ShowingCompletions returns true if the completions are currently visible
+func (m *Model) ShowingCompletions() bool {
+	return m.completions != nil && len(m.completions) > 0 && m.historyIndex == -1 && (m.input.Value() != "" || m.showAll)
+}
+
+// CloseCompletions hides the list of completions so it's no longer visible
+//
+// Sets the input back to what the user had typed, if completions were being cycled through
+func (m *Model) CloseCompletions() {
+	if m.completions == nil {
+		return
+	}
+	m.completions = []Completion{}
+	if m.completionHolder != "" || m.showAll {
+		m.input.SetValue(m.completionHolder)
+		m.completionHolder = ""
+	}
+	m.completionIndex = -1
+	m.showAll = false
 }
 
 // MARK: Private Functions
 
-func (m Model) showCompletionsRender() string {
-	// TODO: Show the error somewhere or only return to user?
-	if m.validCommand == nil {
-		m.input.TextStyle = validCommandStyle
+func (m *Model) saveHistoryToFile() error {
+	// For small history lengths, it's better to just write the entire history to the file every time
+	if m.historyFilePath == "" {
+		return errors.New("history file path not set")
 	}
-
-	completionsText := []string{}
-	completionsDescriptions := []string{}
-	maxCommandLength := 0
-	maxTotalLength := 0
-	if len(m.completions) > 0 && len(m.input.Value()) > 0 {
-		for _, comp := range m.completions {
-			name := comp.getName()
-			description := comp.getDescription()
-
-			completionsText = append(completionsText, name)
-			completionsDescriptions = append(completionsDescriptions, description)
-
-			if len(name) > maxCommandLength {
-				maxCommandLength = len(name)
-			}
-			if len(name)+len(description) > maxTotalLength {
-				maxTotalLength = len(name) + len(description)
-			}
-		}
+	data := historyFileJson{History: m.History}
+	jsonData, err := json.Marshal(data)
+	if err != nil {
+		m.Err = err
+		return err
 	}
-	maxCommandLength += 3
-
-	completionsRow := make([]string, 0, len(completionsText))
-	for i := 0; i < len(completionsText); i++ {
-		textWidth := lipgloss.Width(completionsText[i])
-		text := lipgloss.JoinHorizontal(
-			lipgloss.Left,
-			completionsText[i],
-			lg.
-				Width(maxTotalLength-textWidth).
-				PaddingLeft(maxCommandLength-textWidth).
-				Render(completionsDescriptions[i]),
-		)
-		if i == m.completionIndex {
-			completionsRow = append(
-				completionsRow,
-				highlightedCompletionStyle.Render(text),
-			)
-		} else if i%2 == 0 {
-			completionsRow = append(
-				completionsRow,
-				altCompletionRowStyle.Render(text),
-			)
-		} else {
-			completionsRow = append(
-				completionsRow,
-				completionRowStyle.Render(text),
-			)
-		}
-	}
-
-	if len(completionsRow) != 0 {
-		startCompletionsIndex := max(0, m.completionIndex-4)
-		endCompletionsIndex := min(len(completionsRow), startCompletionsIndex+5)
-		completions := lipgloss.JoinVertical(
-			lipgloss.Left,
-			completionsRow[startCompletionsIndex:endCompletionsIndex]...,
-		)
-
-		offset := m.calculateCompletionsOffset(completions)
-
-		return m.input.View() + "\n" + completionsBoxStyle.
-			Margin(0, 0, 0, offset).
-			Render(
-				completions,
-			)
-	}
-
-	return m.input.View()
+	return os.WriteFile(m.historyFilePath, jsonData, 0644)
 }
 
-func (m Model) calculateCompletionsOffset(completions string) int {
-	if !m.IndentCompletions {
-		return m.CompletionsOffset
-	}
-
-	input := m.input.Value()
-	parts := splitInput(input)
-	finalPart := parts[len(parts)-1]
-	var trimIndexForOffset int
-
-	// If we're entering a string argument then set offset to the end of the last part
-	start := finalPart[0]
-	end := finalPart[len(finalPart)-1]
-	if (string(start) == "\"" || string(start) == "'") && start != end {
-		if len(parts) == 1 {
-			trimIndexForOffset = 0
+func (m *Model) loadHistoryFromFile() error {
+	file, err := os.Open(m.historyFilePath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
 		}
-		trimIndexForOffset = strings.LastIndex(input, parts[len(parts)-2])
-	} else if (string(start) == "\"" || string(start) == "'") && start == end {
-		// If we finished entering a string argument and the last character is a space set the offset to the last space
-		if strings.HasSuffix(input, " ") {
-			trimIndexForOffset = strings.LastIndex(input, " ")
-		} else {
-			// Otherwise set the offset to the argument start
-			trimIndexForOffset = strings.LastIndex(input, parts[len(parts)-2])
-		}
-	} else {
-		// Otherwise set the offset to the last space
-		trimIndexForOffset = strings.LastIndex(input, " ")
+		return err
 	}
-	trimmedInput := input[:trimIndexForOffset+1]
+	defer file.Close()
 
-	offset := lipgloss.Width(trimmedInput) + m.CompletionsOffset
-	if offset+lipgloss.Width(completions) > terminalSize.Width {
-		offset = terminalSize.Width - lipgloss.Width(completions) - 2
+	data, err := os.ReadFile(m.historyFilePath)
+	if err != nil {
+		return err
 	}
 
-	return offset
-}
-
-func (m Model) keyUp() (Model, tea.Cmd) {
-	if len(m.History) == 0 {
-		return m, nil
+	jsonData := historyFileJson{}
+	err = json.Unmarshal(data, &jsonData)
+	if err != nil {
+		return err
 	}
 
-	if len(m.filteredHistory) == 0 {
-		for _, h := range m.History {
-			if strings.HasPrefix(h, m.input.Value()) {
-				m.filteredHistory = append(m.filteredHistory, h)
-			}
-		}
-		if len(m.filteredHistory) == 0 {
-			return m, nil
-		}
-		m.filteredHistory = append(m.filteredHistory, m.input.Value())
-	}
-
-	if m.historyIndex == -1 {
-		m.historyIndex = len(m.filteredHistory) - 2
-		m.input.SetValue(m.filteredHistory[m.historyIndex])
-		m.input.SetCursor(len(m.input.Value()))
-		return m, nil
-	}
-
-	if m.historyIndex > 0 {
-		m.historyIndex--
-		m.input.SetValue(m.filteredHistory[m.historyIndex])
-		m.input.SetCursor(len(m.input.Value()))
-		return m, nil
-	}
-
-	return m, nil
-}
-
-func (m Model) keyDown() (Model, tea.Cmd) {
-	if len(m.History) == 0 || len(m.filteredHistory) == 0 {
-		return m, nil
-	}
-
-	if m.historyIndex < len(m.filteredHistory)-1 {
-		m.historyIndex++
-		m.input.SetValue(m.filteredHistory[m.historyIndex])
-		m.input.SetCursor(len(m.input.Value()))
-		return m, nil
-	}
-
-	return m, nil
-}
-
-func (m Model) keyRight() (Model, tea.Cmd) {
-	if len(m.input.AvailableSuggestions()) == 0 {
-		return m, nil
-	}
-	m.input.SetValue(m.input.CurrentSuggestion())
-	m.input.SetCursor(len(m.input.Value()))
-	return m, nil
-}
-
-func (m Model) keyTab() (Model, tea.Cmd) {
-	if len(m.completions) == 0 {
-		return m, nil
-	}
-
-	if len(m.completions) == 1 {
-		if strings.HasSuffix(strings.TrimSpace(m.input.Value()), m.completions[0].getName()) {
-			return m, nil
-		}
-	}
-
-	if m.completionIndex < len(m.completions)-1 {
-		m.completionIndex++
-	} else {
-		m.completionIndex = -1
-	}
-
-	if m.completionHolder == "" {
-		m.completionHolder = m.input.Value()
-	}
-
-	if m.completionIndex == -1 {
-		m.input.SetValue(m.completionHolder)
-		m.completionHolder = ""
-		return m, nil
-	}
-
-	pretext := m.completionHolder
-	parts := splitInput(m.completionHolder)
-	if !strings.HasSuffix(pretext, " ") && pretext != "" {
-		if len(parts) == 0 {
-			return m, nil
-		}
-		pretext = strings.Join(parts[:len(parts)-1], " ")
-		if len(parts) > 1 {
-			pretext += " "
-		}
-	}
-
-	m.input.SetValue(pretext + m.completions[m.completionIndex].getName())
-	m.input.SetCursor(len(m.input.Value()))
-	return m, nil
-}
-
-func (m Model) keyEnter() (Model, tea.Cmd) {
-	command := m.input.Value()
-	if m.Autotrim {
-		command = strings.TrimSpace(m.input.Value())
-	}
-
-	if len(m.History) > 0 {
-		if m.History[len(m.History)-1] != command {
-			m.History = append(m.History, command)
-		}
-	} else {
-		m.History = append(m.History, command)
-	}
-
-	if len(m.History) > m.HistoryLimit {
-		m.History = m.History[1:]
-	}
-	m = m.resetModel()
+	m.History = jsonData.History
 	m.input.SetSuggestions(m.History)
-	return m, func() tea.Msg {
-		return SelectedCommandMsg{command: command, err: m.validCommand}
-	}
-}
-
-func (m Model) keyBackspace() (Model, tea.Cmd) {
-	m.completionIndex = -1
-	return m, nil
-}
-
-func (m Model) keyDefault() (Model, tea.Cmd) {
-	m.completionHolder = ""
-	m.completionIndex = -1
-	m.historyIndex = -1
-	m.filteredHistory = []string{}
-	return m, nil
+	return nil
 }
 
 func (m Model) resetModel() Model {
@@ -511,274 +231,192 @@ func splitInput(input string) []string {
 	return result
 }
 
-func (m Model) getCompletions() []Completion {
+// MARK: Key Handlers
+
+func (m Model) keyUp() (Model, tea.Cmd) {
+	if len(m.History) == 0 || m.completionIndex != -1 {
+		return m, nil
+	}
+
+	if len(m.filteredHistory) == 0 {
+		m.filteredHistory = append(m.filteredHistory, m.input.Value())
+		for _, h := range m.History {
+			if strings.HasPrefix(h, m.input.Value()) {
+				m.filteredHistory = append(m.filteredHistory, h)
+			}
+		}
+	}
+	if len(m.filteredHistory) < 2 {
+		return m, nil
+	}
+
+	if m.historyIndex == -1 {
+		m.historyIndex = 1
+	} else if m.historyIndex < len(m.filteredHistory)-1 {
+		m.historyIndex++
+	}
+
+	m.input.SetValue(m.filteredHistory[m.historyIndex])
+	m.input.CursorEnd()
+	return m, nil
+}
+
+func (m Model) keyDown() (Model, tea.Cmd) {
+	if len(m.filteredHistory) < 2 || m.completionIndex != -1 {
+		return m, nil
+	}
+
+	if m.historyIndex == -1 {
+		m.historyIndex = len(m.filteredHistory) - 2
+	} else if m.historyIndex > 0 {
+		m.historyIndex--
+	}
+
+	m.input.SetValue(m.filteredHistory[m.historyIndex])
+	m.input.CursorEnd()
+	return m, nil
+}
+
+func (m Model) keyRight() (Model, tea.Cmd) {
 	if m.input.Value() == "" {
-		return []Completion{}
+		return m, nil
 	}
-	allCompletions := getCompletions(m.input.Value(), m.Commands)
 
-	// Sort completions alphabetically by command
-	for i := 0; i < len(allCompletions); i++ {
-		for j := i + 1; j < len(allCompletions); j++ {
-			if allCompletions[i].getName() > allCompletions[j].getName() {
-				allCompletions[i], allCompletions[j] = allCompletions[j], allCompletions[i]
-			}
+	// TODO: Open Bubbletea issue about input supporting checking if a suggestion is available aka currentsuggestion is safe or out of length
+	hasSuggestion := false
+	for _, h := range m.History {
+		if strings.HasPrefix(h, m.input.Value()) && h != m.input.Value() {
+			hasSuggestion = true
+			break
 		}
 	}
 
-	return allCompletions
+	if !hasSuggestion {
+		return m, nil
+	}
+	m.input.SetValue(m.input.CurrentSuggestion())
+	m.input.CursorEnd()
+	m.completionIndex = -1
+	m.completionHolder = ""
+	m.showAll = false
+	return m, nil
 }
 
-func getCompletions(
-	fullCommand string,
-	availableCommands []*Command,
-) []Completion {
-	var completions []Completion
+func (m Model) keyTab(input string) (Model, tea.Cmd) {
+	trimmedInput := strings.TrimSpace(m.input.Value())
 
-	// Extract the command and arguments from the full command
-	commands, arguments, success := strings.Cut(fullCommand, " -")
-	if len(commands) == 0 {
-		return completions
+	// If the input is empty, show all completions
+	if trimmedInput == "" && !m.showAll {
+		m.showAll = true
+		m.completions = m.getCompletions()
+		return m, nil
 	}
-	commandParts := strings.Fields(commands)
-	if len(commandParts) == 0 {
-		return completions
-	}
-	if success {
-		arguments = "-" + arguments
-	}
-	argumentParts := splitInput(arguments)
 
-	// Find the final entered command in the available commands
-	var finalCommand *Command
-	depth := 0
-	for _, enteredCommand := range commandParts {
-		for _, c := range availableCommands {
-			// If the command is found in the available commands and we've finished typing then use it
-			if c.Command == enteredCommand &&
-				strings.Contains(fullCommand, fmt.Sprintf("%s ", c.Command)) {
-				finalCommand = c
-				availableCommands = c.SubCommands
-				depth++
-				break
-			}
+	// If there are no completions, do nothing
+	if len(m.completions) == 0 {
+		return m, nil
+	}
+
+	// If there is only one completion and it matches the input, do nothing
+	if len(m.completions) == 1 {
+		if strings.HasSuffix(trimmedInput, m.completions[0].getName()) {
+			return m, nil
 		}
 	}
 
-	// If the final command is nil, then we haven't finished typing the first command yet
-	if finalCommand == nil {
-		for _, c := range availableCommands {
-			if strings.HasPrefix(c.Command, fullCommand) {
-				completions = append(completions, c)
-			}
+	// Cycle and update the completion index
+	if input == "tab" || input == "ctrl+n" {
+		// Down
+		if m.completionIndex < len(m.completions)-1 {
+			m.completionIndex++
+		} else {
+			m.completionIndex = -1
 		}
-		return completions
-	}
-
-	// If the depth is less than the number of full commands entered, we have an invalid command
-	fullCommandCount := len(commandParts) - 1
-	if strings.HasSuffix(fullCommand, " ") {
-		fullCommandCount++
-	}
-	if depth < fullCommandCount {
-		return completions
-	}
-
-	// If the final command has subcommands, return them as completions
-	if len(finalCommand.SubCommands) > 0 {
-		for _, command := range finalCommand.SubCommands {
-			// If we haven't started typing the command yet, show all subcommands
-			if strings.Contains(
-				fullCommand,
-				fmt.Sprintf("%s ", commandParts[len(commandParts)-1]),
-			) {
-				completions = append(completions, command)
-			} else if strings.HasPrefix(command.Command, commandParts[len(commandParts)-1]) {
-				completions = append(completions, command)
-			}
-		}
-		return completions
-	}
-
-	// ----- If we're got here, we're dealing with arguments -----
-
-	// If we haven't entered any arguments yet, show all arguments
-	if len(argumentParts) == 0 {
-		for _, a := range finalCommand.Arguments {
-			completions = append(completions, a)
-		}
-		return completions
-	}
-
-	// If we're already entering an arg value, show only the argument for that value
-	if len(argumentParts) >= 2 {
-		lastArgument := argumentParts[len(argumentParts)-2]
-		lastValue := argumentParts[len(argumentParts)-1]
-
-		if strings.HasPrefix(lastArgument, "-") && !strings.HasPrefix(lastValue, "-") &&
-			!strings.Contains(fullCommand, fmt.Sprintf(" %s ", lastValue)) {
-			for _, a := range finalCommand.Arguments {
-				if a.Argument == lastArgument {
-					// Bool arguments don't need a value
-					if a.Type != BoolArgument {
-						return []Completion{a}
-					}
-				}
-			}
+	} else {
+		// Up
+		if m.completionIndex > -1 {
+			m.completionIndex--
+		} else {
+			m.completionIndex = len(m.completions) - 1
 		}
 	}
 
-	// If we end with a space aka we're about to enter another argument or value
-	if strings.HasSuffix(fullCommand, " ") {
-		// If an argument value is expected next, show that corresponding argument
-		lastArgument := argumentParts[len(argumentParts)-1]
-		for _, a := range finalCommand.Arguments {
-			if a.Argument == lastArgument {
-				// Bool arguments don't need a value
-				if a.Type != BoolArgument {
-					return []Completion{a}
-				}
-			}
-		}
-
-		// Otherwise, show all arguments not yet entered
-		for _, a := range finalCommand.Arguments {
-			if !strings.Contains(fullCommand, fmt.Sprintf(" %s ", a.Argument)) {
-				completions = append(completions, a)
-			}
-		}
-		return completions
+	// Save the current input if we haven't already
+	if m.completionHolder == "" && !m.showAll {
+		m.completionHolder = m.input.Value()
 	}
 
-	// Finally, if here then show completions based on the argument being entered
-	for _, a := range finalCommand.Arguments {
-		if strings.HasPrefix(a.Argument, argumentParts[len(argumentParts)-1]) {
-			// Filter out arguments that have already been entered
-			if !strings.Contains(fullCommand, fmt.Sprintf(" %s ", a.Argument)) {
-				completions = append(completions, a)
-			}
+	// Update the scroll bar percent
+	scrollbarPercent = (float64(m.completionIndex) + 1) / float64(len(m.completions))
+
+	// If the completion index is -1, reset the input to the completion holder
+	if m.completionIndex == -1 {
+		m.input.SetValue(m.completionHolder)
+		m.completionHolder = ""
+		return m, nil
+	}
+
+	// If the completion is empty (aka positional arg), don't update the input
+	if m.completions[m.completionIndex].getAutocomplete() == "" {
+		return m, nil
+	}
+
+	pretext := m.completionHolder
+	parts := splitInput(m.completionHolder)
+	// If the pretext doesn't end in a space, add one
+	if !strings.HasSuffix(pretext, " ") && len(parts) > 0 {
+		pretext = strings.Join(parts[:len(parts)-1], " ")
+		if len(parts) > 1 {
+			pretext += " "
 		}
 	}
 
-	return completions
+	// Update the input with the current completion
+	m.input.SetValue(pretext + m.completions[m.completionIndex].getAutocomplete())
+	m.input.CursorEnd()
+	return m, nil
 }
 
-func (m Model) validateInput() error {
-	if m.input.Value() == "" {
-		return nil
+func (m Model) keyEnter() (Model, tea.Cmd) {
+	command := m.input.Value()
+	if m.Autotrim {
+		command = strings.TrimSpace(m.input.Value())
 	}
 
-	err := validateCommand(m.input.Value(), m.Commands)
-	if err != nil {
-		return err
+	if (len(m.History) == 0 || m.History[0] != command) && command != "" {
+		m.History = append([]string{command}, m.History...)
 	}
-	return nil
+
+	if len(m.History) > m.HistoryLimit {
+		m.History = m.History[1:]
+	}
+	m = m.resetModel()
+	m.saveHistoryToFile()
+	m.input.SetSuggestions(m.History)
+
+	return m, func() tea.Msg {
+		return SelectedCommandMsg{Command: command, Err: m.validCommand}
+	}
 }
 
-// Helper function to find a command by name
-func findCommand(commands []*Command, name string) (*Command, error) {
-	for _, cmd := range commands {
-		if cmd.Command == name {
-			return cmd, nil
-		}
-	}
-	return nil, errors.New("command not found")
+func (m Model) keyBackspace() (Model, tea.Cmd) {
+	m.completionHolder = ""
+	m.completionIndex = -1
+	m.historyIndex = -1
+	m.filteredHistory = []string{}
+	m.showAll = false
+	return m, nil
 }
 
-// Helper function to find an argument by name
-func findArgument(arguments []*Argument, name string) (*Argument, error) {
-	for _, arg := range arguments {
-		if arg.Argument == name {
-			return arg, nil
-		}
-	}
-	return nil, errors.New("argument not found")
-}
-
-// Helper function to validate argument value based on type
-func validateArgumentValue(arg *Argument, value string) error {
-	switch arg.Type {
-	case StringArgument:
-		if value == "" {
-			return errors.New("missing value for argument: " + arg.Argument)
-		}
-	case IntArgument:
-		if _, err := strconv.Atoi(value); err != nil {
-			return errors.New("invalid integer value for argument: " + arg.Argument)
-		}
-	case FloatArgument:
-		if _, err := strconv.ParseFloat(value, 64); err != nil {
-			return errors.New("invalid float value for argument: " + arg.Argument)
-		}
-	case BoolArgument:
-		return nil // No validation needed for boolean, presence is enough
-	case FileArgument:
-		if file, err := os.Stat(value); err != nil {
-			return errors.New("invalid file path for argument: " + arg.Argument)
-		} else if file.IsDir() {
-			return errors.New("file path is a directory: " + arg.Argument)
-		}
-	default:
-		return errors.New("unknown argument type: " + string(arg.Type))
-	}
-	return nil
-}
-
-func validateCommand(input string, commands []*Command) error {
-	parts := splitInput(input)
-	if len(parts) == 0 {
-		return errors.New("empty command")
+func (m Model) keyDefault(msg string) (Model, tea.Cmd) {
+	if len(msg) > 1 {
+		return m, nil
 	}
 
-	currentCommands := commands
-	var parentCmd *Command
-
-	for i := 0; i < len(parts); i++ {
-		part := parts[i]
-
-		if i == 0 || (i > 0 && !strings.HasPrefix(part, "-")) {
-			cmd, err := findCommand(currentCommands, part)
-			if err != nil {
-				return fmt.Errorf("command '%s' not found", part)
-			}
-			parentCmd = cmd
-			currentCommands = cmd.SubCommands
-			continue
-		}
-
-		if strings.HasPrefix(part, "-") {
-			argName := part
-			argValue := ""
-
-			if strings.Contains(part, "=") {
-				parts := strings.SplitN(part, "=", 2)
-				argName = parts[0]
-				argValue = parts[1]
-			}
-
-			if parentCmd == nil {
-				return errors.New("invalid argument: " + part)
-			}
-
-			arg, err := findArgument(parentCmd.Arguments, argName)
-			if err != nil {
-				return fmt.Errorf("argument '%s' not found", argName)
-			}
-
-			if arg.Type != BoolArgument && argValue == "" {
-				if i == len(parts)-1 || strings.HasPrefix(parts[i+1], "-") {
-					return fmt.Errorf("missing value for argument '%s'", argName)
-				}
-				argValue = parts[i+1]
-				i++
-			}
-
-			err = validateArgumentValue(arg, argValue)
-			if err != nil {
-				return err
-			}
-		}
-	}
-
-	return nil
+	m.completionHolder = ""
+	m.completionIndex = -1
+	m.historyIndex = -1
+	m.filteredHistory = []string{}
+	m.showAll = false
+	return m, nil
 }
