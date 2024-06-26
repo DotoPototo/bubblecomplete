@@ -8,6 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/muesli/termenv"
 )
 
 // MARK: Types and Vars
@@ -209,6 +210,9 @@ func New(commands []*Command, width int) (Model, error) {
 			return Model{}, err
 		}
 	}
+
+	// https://github.com/charmbracelet/lipgloss/issues/73
+	lipgloss.SetHasDarkBackground(termenv.HasDarkBackground())
 
 	input := textinput.New()
 	input.Focus()
