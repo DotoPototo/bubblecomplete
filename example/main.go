@@ -232,7 +232,7 @@ func initialModel() tea.Model {
 	home, _ := os.UserHomeDir()
 	historyFilePath := home + "/.bubblecomplete_history.json"
 	bc.SetHistoryFilePath(historyFilePath)
-	bc.SetPlaceholder("Enter Falcon RTR Command...")
+	bc.SetPlaceholder("Enter Command...")
 
 	bc.HistoryLimit = 50
 
