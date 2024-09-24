@@ -142,6 +142,7 @@ func (m model) View() string {
 
 ## Roadmap
 
+- [ ] Update to bubbletea v2
 - [ ] Autocomplete for filepaths
   - [ ] Underlined white if part of a valid path
   - [ ] Green if full valid path
