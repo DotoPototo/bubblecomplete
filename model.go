@@ -339,6 +339,10 @@ func (f *Flag) Validate() error {
 		if f.PsFlag[1:] == "" {
 			return fmt.Errorf("flags must have a flag name")
 		}
+		// Ensure PsFlags arent one character
+		if len(f.PsFlag) == 2 {
+			return fmt.Errorf("powershell flags must be more than one character")
+		}
 		if f.ShortFlag != "" || f.LongFlag != "" {
 			return fmt.Errorf("powershell flags cannot have short or long flags defined")
 		}

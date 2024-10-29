@@ -145,6 +145,7 @@ func (m model) View() string {
 
 - [ ] Update to bubbletea v2
 - [x] Support PowerShell style flags
+- [ ] Support PowerShell aliases for flags i.e. `-v` for `-verbose`
 - [ ] Autocomplete for filepaths
   - [ ] Underlined white if part of a valid path
   - [ ] Green if full valid path

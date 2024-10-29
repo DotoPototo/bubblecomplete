@@ -3,6 +3,7 @@ package bubblecomplete
 import (
 	"fmt"
 	"regexp"
+	"slices"
 	"strings"
 	"unicode"
 )
@@ -437,7 +438,9 @@ func splitPositionArgsAndFlags(argParts []string, command *Command) ([]string, [
 					}
 				} else {
 					// It's an invalid but still entered flag
-					flags = append(flags, argParts[i])
+					if !slices.Contains(flags, argParts[i]) {
+						flags = append(flags, argParts[i])
+					}
 				}
 			}
 		} else {

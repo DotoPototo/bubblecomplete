@@ -235,14 +235,12 @@ var commands = []*bubblecomplete.Command{
 		},
 		Flags: []*bubblecomplete.Flag{
 			{
-				PsFlag: "-example",
-				// PsAliases:   []string{"-e"},
-				Description: "Example flag showing PowerShell style with alias",
+				PsFlag:      "-ex",
+				Description: "Example flag showing PowerShell style",
 				Type:        bubblecomplete.StringArgument,
 			},
 			{
-				PsFlag: "-verbose",
-				// PsAliases:   []string{"-v"},
+				PsFlag:      "-Verbose",
 				Description: "Enable verbose output",
 				Type:        bubblecomplete.BoolArgument,
 			},
