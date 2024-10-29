@@ -6,7 +6,7 @@ import (
 	"os"
 	"runtime/pprof"
 
-	bubblecomplete "github.com/mikecbone/bubblecomplete"
+	bubblecomplete "github.com/dotopototo/bubblecomplete"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"

@@ -4,6 +4,26 @@ Bubblecomplete is a command suggestion and autocompletion component for [Bubble 
 
 ![example/main.go](./.github/example.gif)
 
+## Installing
+
+First use `go get` to install the latest version of the library.
+
+```shell
+go get -u github.com/dotopototo/bubblecomplete
+```
+
+Or alternatively, to get a specific branch:
+
+```shell
+go get -u github.com/dotopototo/bubblecomplete@beta
+```
+
+Next include bubblecomplete in your application.
+
+```go
+import "github.com/dotopototo/bubblecomplete"
+```
+
 ## Usage
 
 See the [example](./example/main.go) for a full working implementation.

@@ -1,14 +1,14 @@
-module github.com/mikecbone/bubblecomplete/example
+module github.com/dotopototo/bubblecomplete/example
 
 go 1.22.3
 
-replace github.com/mikecbone/bubblecomplete => ../
+replace github.com/dotopototo/bubblecomplete => ../
 
 require github.com/charmbracelet/bubbletea v1.1.2
 
 require (
 	github.com/charmbracelet/lipgloss v0.13.1
-	github.com/mikecbone/bubblecomplete v0.1.2
+	github.com/dotopototo/bubblecomplete v0.1.2
 )
 
 require (
@@ -16,7 +16,7 @@ require (
 	github.com/aymanbagabas/go-osc52/v2 v2.0.1 // indirect
 	github.com/charmbracelet/bubbles v0.20.0 // indirect
 	github.com/charmbracelet/harmonica v0.2.0 // indirect
-	github.com/charmbracelet/x/ansi v0.4.0 // indirect
+	github.com/charmbracelet/x/ansi v0.4.1 // indirect
 	github.com/charmbracelet/x/term v0.2.0 // indirect
 	github.com/erikgeiser/coninput v0.0.0-20211004153227-1c3628e74d0f // indirect
 	github.com/lucasb-eyer/go-colorful v1.2.0 // indirect
