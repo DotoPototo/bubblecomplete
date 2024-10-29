@@ -132,7 +132,8 @@ func getCompletions(input string, commands []*Command) []Completion {
 	}
 
 	// Otherwise show only the flags
-	completions = append(completions, getFlagCompletions(input, finalCommand, flagArgs, globalFlags)...)
+	flagCompletions, _ := getFlagCompletions(input, finalCommand, flagArgs, globalFlags)
+	completions = append(completions, flagCompletions...)
 	return completions
 }
 
@@ -152,7 +153,11 @@ func handleSubCommandCompletions(
 	}
 
 	// Append any flag completions
-	completions = append(completions, getFlagCompletions(input, cmd, flagArgs, globalFlags)...)
+	flagCompletions, solo := getFlagCompletions(input, cmd, flagArgs, globalFlags)
+	if solo {
+		return flagCompletions
+	}
+	completions = append(completions, flagCompletions...)
 	return completions
 }
 
@@ -167,7 +172,11 @@ func handlePositionalArgumentCompletions(
 
 	// Show the flag arguments if there are no positional arguments entered
 	if len(posArgs) == 0 {
-		completions = append(completions, getFlagCompletions(input, cmd, flagArgs, globalFlags)...)
+		flagCompletions, solo := getFlagCompletions(input, cmd, flagArgs, globalFlags)
+		if solo {
+			return flagCompletions
+		}
+		completions = append(completions, flagCompletions...)
 	}
 
 	// Handle positional argument completions
@@ -253,7 +262,10 @@ func isEnteringPosArgValue(input string, finalCommand *Command, posArgParts []st
 	return false, nil
 }
 
-func getFlagCompletions(input string, finalCommand *Command, flagArgParts []string, globalFlags []*Flag) []Completion {
+// getFlagCompletions gets completions for flags based on the input
+//
+// Returns a list of completions and a boolean indicating if this should be the only completion shown or not
+func getFlagCompletions(input string, finalCommand *Command, flagArgParts []string, globalFlags []*Flag) ([]Completion, bool) {
 	completions := []Completion{}
 
 	allFlags := append(finalCommand.Flags, globalFlags...)
@@ -263,17 +275,17 @@ func getFlagCompletions(input string, finalCommand *Command, flagArgParts []stri
 		for _, a := range allFlags {
 			completions = append(completions, a)
 		}
-		return completions
+		return completions, false
 	}
 
 	// If we're entering a flag value, show only the flag for that value
 	if yes, flag := isEnteringFlagValue(input, finalCommand, flagArgParts); yes {
-		return []Completion{flag}
+		return []Completion{flag}, true
 	}
 
 	// If we need to enter a flag value, show only the flag for that value
 	if yes, flag := needToEnterFlagValue(finalCommand, flagArgParts); yes {
-		return []Completion{flag}
+		return []Completion{flag}, true
 	}
 
 	// Otherwise if we end with a space, show all flags not yet entered
@@ -283,17 +295,24 @@ func getFlagCompletions(input string, finalCommand *Command, flagArgParts []stri
 				completions = append(completions, flag)
 			}
 		}
-		return completions
+		return completions, false
 	}
 
 	// Otherwise finally, show completions based on the argument being entered
 	finalPart := flagArgParts[len(flagArgParts)-1]
-	// If the last argument is a combined short flag, only check for the last character flag
-	if !strings.HasPrefix(finalPart, "--") && len(finalPart) > 2 {
-		finalPart = "-" + finalPart[len(finalPart)-1:]
-	}
+	// TODO: Refactor to its own function for better readability and testability
 	for _, flag := range allFlags {
-		if strings.HasPrefix(flag.ShortFlag, finalPart) || strings.HasPrefix(flag.LongFlag, finalPart) {
+		if flag.PsFlag != "" && strings.HasPrefix(flag.PsFlag, finalPart) { // If the flag is a powershell flag handle it
+			// Filter out arguments that have already been entered except for the one we're entering
+			if !containsFlag(input, flag) || finalPart == flag.PsFlag {
+				completions = append(completions, flag)
+			}
+		} else if strings.HasPrefix(flag.ShortFlag, finalPart) || strings.HasPrefix(flag.LongFlag, finalPart) { // Otherwise handle traditional flags
+			// If the last argument is a combined short flag, only check for the last character flag
+			if !strings.HasPrefix(finalPart, "--") && len(finalPart) > 2 {
+				finalPart = "-" + finalPart[len(finalPart)-1:]
+			}
+
 			// Filter out arguments that have already been entered except for the one we're entering
 			if !containsFlag(input, flag) || (finalPart == flag.ShortFlag || finalPart == flag.LongFlag) {
 				completions = append(completions, flag)
@@ -301,7 +320,7 @@ func getFlagCompletions(input string, finalCommand *Command, flagArgParts []stri
 		}
 	}
 
-	return completions
+	return completions, false
 }
 
 func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []string) (bool, *Flag) {
@@ -318,11 +337,11 @@ func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []str
 
 		if strings.HasPrefix(lastFlag, "-") && !strings.HasPrefix(lastValue, "-") && !strings.Contains(input, fmt.Sprintf(" %s ", lastValue)) {
 			flagValueToCompare := lastFlag
-			// If the last flag is a short flag, only compare the last character
-			if !strings.HasPrefix(lastFlag, "--") && len(lastFlag) > 2 {
-				flagValueToCompare = "-" + lastFlag[len(lastFlag)-1:]
-			}
 			for _, flag := range finalCommand.Flags {
+				// If the last flag is a short flag, only compare the last character
+				if flag.PsFlag == "" && !strings.HasPrefix(lastFlag, "--") && len(lastFlag) > 2 {
+					flagValueToCompare = "-" + lastFlag[len(lastFlag)-1:]
+				}
 				if containsFlag(flagValueToCompare, flag) && flag.Type != BoolArgument {
 					return true, flag
 				}
@@ -330,10 +349,14 @@ func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []str
 		}
 	}
 
-	// Check if we're entering a long flag value with an equals sign between the flag and value
-	if strings.HasPrefix(lastArg, "--") && strings.Contains(lastArg, "=") {
+	// If we're entering a flag value with an equals sign between the flag and value
+	if strings.Contains(lastArg, "=") {
 		if (!stringEndsInQuoteWithoutEquals(lastArg)) || (stringEndsInQuoteWithoutEquals(lastArg) && !strings.HasSuffix(input, " ")) {
 			for _, flag := range finalCommand.Flags {
+				// If the flag isn't a PowerShell flag, ensure it's a long flag
+				if flag.PsFlag == "" && !strings.HasPrefix(lastArg, "--") {
+					continue
+				}
 				if containsFlag(lastArg, flag) && flag.Type != BoolArgument {
 					return true, flag
 				}
@@ -346,17 +369,18 @@ func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []str
 
 func needToEnterFlagValue(finalCommand *Command, flagArgParts []string) (bool, *Flag) {
 	lastArgument := flagArgParts[len(flagArgParts)-1]
-	// If the last argument is a combined short flag, only check for the last character flag
-	if !strings.HasPrefix(lastArgument, "--") && len(lastArgument) > 2 {
-		lastArgument = "-" + lastArgument[len(lastArgument)-1:]
-	}
 
-	for _, a := range finalCommand.Flags {
-		// If the last argument contains a flag and isn't a long flag with an equals sign pattern
-		if containsFlag(lastArgument, a) && !strings.Contains(lastArgument, fmt.Sprintf("%s=", a.LongFlag)) {
+	for _, flag := range finalCommand.Flags {
+		// If the last argument is a combined short flag, only check for the last character flag
+		if flag.PsFlag == "" && !strings.HasPrefix(lastArgument, "--") && len(lastArgument) > 2 {
+			lastArgument = "-" + lastArgument[len(lastArgument)-1:]
+		}
+
+		// If the last argument contains a flag and isn't a long flag / psflag with an equals sign pattern
+		if containsFlag(lastArgument, flag) && !strings.Contains(lastArgument, fmt.Sprintf("%s=", flag.LongFlag)) && !strings.Contains(lastArgument, fmt.Sprintf("%s=", flag.PsFlag)) {
 			// Bool arguments don't need a value
-			if a.Type != BoolArgument {
-				return true, a
+			if flag.Type != BoolArgument {
+				return true, flag
 			}
 		}
 	}
@@ -427,6 +451,9 @@ func splitPositionArgsAndFlags(argParts []string, command *Command) ([]string, [
 
 func containsFlag(command string, flag *Flag) bool {
 	command = removeQuotedStrings(command)
+	if flag.PsFlag != "" && containsPowerShellFlag(command, flag.PsFlag) {
+		return true
+	}
 	if flag.ShortFlag != "" && containsShortFlag(command, flag.ShortFlag) {
 		return true
 	}
@@ -496,4 +523,14 @@ func containsLongFlag(command string, flag string) bool {
 	}
 
 	return false
+}
+
+func containsPowerShellFlag(command string, flag string) bool {
+	// If the powershell flag is a short flag, check for the short flag pattern
+	if len(flag) == 2 && flag[0] == '-' {
+		return containsShortFlag(command, flag)
+	}
+
+	// Otherwise check for the long flag pattern
+	return containsLongFlag(command, flag)
 }

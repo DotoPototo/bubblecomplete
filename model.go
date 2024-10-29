@@ -166,12 +166,16 @@ func (a PositionalArgument) getType() argumentType {
 type Flag struct {
 	ShortFlag   string
 	LongFlag    string
+	PsFlag      string
 	Description string
 	Type        argumentType
 	Persistent  bool
 }
 
 func (a Flag) getName() string {
+	if a.PsFlag != "" {
+		return a.PsFlag
+	}
 	if a.ShortFlag != "" && a.LongFlag != "" {
 		return fmt.Sprintf("%s %s", a.ShortFlag, a.LongFlag)
 	}
@@ -189,6 +193,9 @@ func (a Flag) getDescription() string {
 }
 
 func (a Flag) getAutocomplete() string {
+	if a.PsFlag != "" {
+		return a.PsFlag
+	}
 	if a.ShortFlag != "" {
 		return a.ShortFlag
 	}
@@ -297,8 +304,8 @@ func (p *PositionalArgument) Validate() error {
 }
 
 func (f *Flag) Validate() error {
-	if f.ShortFlag == "" && f.LongFlag == "" {
-		return fmt.Errorf("flags must have at least one short or long flag defined")
+	if f.ShortFlag == "" && f.LongFlag == "" && f.PsFlag == "" {
+		return fmt.Errorf("flags must have at least one flag defined")
 	}
 
 	// Short flag validation
@@ -321,6 +328,19 @@ func (f *Flag) Validate() error {
 		}
 		if f.LongFlag[2:] == "" {
 			return fmt.Errorf("flags must have a flag name")
+		}
+	}
+
+	// PowerShell flag validation
+	if f.PsFlag != "" {
+		if !strings.HasPrefix(f.PsFlag, "-") {
+			return fmt.Errorf("powershell flags must start with a dash")
+		}
+		if f.PsFlag[1:] == "" {
+			return fmt.Errorf("flags must have a flag name")
+		}
+		if f.ShortFlag != "" || f.LongFlag != "" {
+			return fmt.Errorf("powershell flags cannot have short or long flags defined")
 		}
 	}
 

@@ -80,13 +80,14 @@ var commands = []*bubblecomplete.Command{
 
 #### Flags
 
-| Field       | Description                                                      | Type                          |
-| ----------- | ---------------------------------------------------------------- | ----------------------------- |
-| ShortFlag   | The short flag identifier i.e. `-v`                              | `string`                      |
-| LongFlag    | The long flag identifier i.e. `--verbose`                        | `string`                      |
-| Description | A description of the flag                                        | `string`                      |
-| Type        | The type of argument the flag expects                            | `bubblecomplete.argumentType` |
-| Persistent  | A persistent flag is available to all subcommands of the command | `bool`                        |
+| Field       | Description                                                                        | Type                          |
+| ----------- | ---------------------------------------------------------------------------------- | ----------------------------- |
+| ShortFlag   | The short flag identifier i.e. `-v`                                                | `string`                      |
+| LongFlag    | The long flag identifier i.e. `--verbose`                                          | `string`                      |
+| PsFlag      | PowerShell style flag i.e. `-verbose` - not compatable with ShortFlag and LongFlag | `string`                      |
+| Description | A description of the flag                                                          | `string`                      |
+| Type        | The type of argument the flag expects                                              | `bubblecomplete.argumentType` |
+| Persistent  | A persistent flag is available to all subcommands of the command                   | `bool`                        |
 
 #### Argument Types
 
@@ -143,6 +144,7 @@ func (m model) View() string {
 ## Roadmap
 
 - [ ] Update to bubbletea v2
+- [x] Support PowerShell style flags
 - [ ] Autocomplete for filepaths
   - [ ] Underlined white if part of a valid path
   - [ ] Green if full valid path
