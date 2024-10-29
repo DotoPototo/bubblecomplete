@@ -124,7 +124,7 @@ func (m *Model) ClearHistory() {
 
 // ShowingCompletions returns true if the completions are currently visible
 func (m *Model) ShowingCompletions() bool {
-	return m.completions != nil && len(m.completions) > 0 && m.historyIndex == -1 && (m.input.Value() != "" || m.showAll)
+	return len(m.completions) > 0 && m.historyIndex == -1 && (m.input.Value() != "" || m.showAll)
 }
 
 // CloseCompletions hides the list of completions so it's no longer visible

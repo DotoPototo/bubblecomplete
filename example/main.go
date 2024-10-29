@@ -43,6 +43,11 @@ var commands = []*bubblecomplete.Command{
 				Type:        bubblecomplete.BoolArgument,
 			},
 			{
+				LongFlag:    "--file-name",
+				Description: "Specify the name to display for a file",
+				Type:        bubblecomplete.StringArgument,
+			},
+			{
 				ShortFlag:   "-n",
 				LongFlag:    "--number",
 				Description: "Number all output lines",
@@ -214,6 +219,32 @@ var commands = []*bubblecomplete.Command{
 			{
 				Command:     "test",
 				Description: "Test packages",
+			},
+		},
+	},
+	{
+		Command:     "ps",
+		Description: "Example PowerShell-style command",
+		PositionalArguments: []*bubblecomplete.PositionalArgument{
+			{
+				Name:        "Input",
+				Description: "Input file to process",
+				Type:        bubblecomplete.FileArgument,
+				Required:    true,
+			},
+		},
+		Flags: []*bubblecomplete.Flag{
+			{
+				PsFlag: "-example",
+				// PsAliases:   []string{"-e"},
+				Description: "Example flag showing PowerShell style with alias",
+				Type:        bubblecomplete.StringArgument,
+			},
+			{
+				PsFlag: "-verbose",
+				// PsAliases:   []string{"-v"},
+				Description: "Enable verbose output",
+				Type:        bubblecomplete.BoolArgument,
 			},
 		},
 	},
