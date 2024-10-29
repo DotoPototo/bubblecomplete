@@ -66,9 +66,12 @@ func validateCommandInput(input string, commands []*Command) error {
 		}
 
 		if strings.HasPrefix(part, "-") && !strings.HasPrefix(part, "--") {
-			err := validateShortFlags(part, parts, &i, parentCmd, globalFlags)
+			err := validatePowerShellFlags(part, parts, &i, parentCmd, globalFlags)
 			if err != nil {
-				return err
+				err := validateShortFlags(part, parts, &i, parentCmd, globalFlags)
+				if err != nil {
+					return err
+				}
 			}
 			continue
 		}
@@ -95,6 +98,41 @@ func validateCommandInput(input string, commands []*Command) error {
 		return fmt.Errorf("missing positional argument: %s", parentCmd.PositionalArguments[positionalIndex].Name)
 	}
 
+	return nil
+}
+
+func validatePowerShellFlags(part string, parts []string, i *int, parentCmd *Command, globalFlags []*Flag) error {
+	argName := part
+	argValue := ""
+
+	if strings.Contains(part, "=") {
+		argParts := strings.SplitN(part, "=", 2)
+		argName = argParts[0]
+		argValue = argParts[1]
+	}
+
+	if parentCmd == nil {
+		return errors.New("invalid flag: " + part)
+	}
+
+	allFlags := append(parentCmd.Flags, globalFlags...)
+	arg, err := findFlag(allFlags, argName)
+	if err != nil {
+		return fmt.Errorf("flag '%s' not found", argName)
+	}
+
+	if arg.getType() != BoolArgument && argValue == "" {
+		if *i == len(parts)-1 || strings.HasPrefix(parts[*i+1], "-") {
+			return fmt.Errorf("missing value for flag '%s'", argName)
+		}
+		argValue = parts[*i+1]
+		*i++
+	}
+
+	err = validateArgumentValue(arg, argValue)
+	if err != nil {
+		return err
+	}
 	return nil
 }
 
@@ -201,7 +239,7 @@ func findCommand(commands []*Command, name string) (*Command, error) {
 
 func findFlag(arguments []*Flag, name string) (*Flag, error) {
 	for _, arg := range arguments {
-		if arg.ShortFlag == name || arg.LongFlag == name {
+		if arg.ShortFlag == name || arg.LongFlag == name || arg.PsFlag == name {
 			return arg, nil
 		}
 	}
