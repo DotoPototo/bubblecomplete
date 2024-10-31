@@ -63,6 +63,7 @@ func uniqueCompletions(completions *[]Completion) {
 	*completions = list
 }
 
+// getCompletions gets completions for the input based on the available commands
 func getCompletions(input string, commands []*Command) []Completion {
 	var completions []Completion
 	var globalFlags []*Flag

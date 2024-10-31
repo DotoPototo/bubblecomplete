@@ -66,9 +66,9 @@ func validateCommandInput(input string, commands []*Command) error {
 		}
 
 		if strings.HasPrefix(part, "-") && !strings.HasPrefix(part, "--") {
-			err := validatePowerShellFlags(part, parts, &i, parentCmd, globalFlags)
+			err := validateShortFlags(part, parts, &i, parentCmd, globalFlags)
 			if err != nil {
-				err := validateShortFlags(part, parts, &i, parentCmd, globalFlags)
+				err := validatePowerShellFlags(part, parts, &i, parentCmd, globalFlags)
 				if err != nil {
 					return err
 				}
