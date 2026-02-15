@@ -86,7 +86,7 @@ func (m Model) showCompletionsRender() string {
 	// Create each completion row
 	completionsRow := make([]string, 0, len(completionTitles))
 	completionsWidth := m.getCompletionsWidth(maxLineLength)
-	descMaxWidth := completionsWidth - maxTitleLength - 2
+	descMaxWidth := completionsWidth - maxTitleLength
 	for i := 0; i < len(completionTitles); i++ {
 		descText := truncateDescription(completionDescriptions[i], descMaxWidth)
 		if i != m.completionIndex {
