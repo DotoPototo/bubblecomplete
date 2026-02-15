@@ -5,7 +5,6 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/progress"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/muesli/termenv"
@@ -43,11 +42,9 @@ type Model struct {
 
 	// ---- Other ----
 
-	Err               error
-	loaded            bool
-	scrollbarProgress progress.Model
-	scrollbarPercent  float64
-	width             int
+	Err    error
+	loaded bool
+	width  int
 
 	// ---- Options ----
 
@@ -73,6 +70,30 @@ type Model struct {
 	CompletionRows int
 	// The text style for the matched prefix in completion names
 	MatchHighlightStyle lipgloss.Style
+	// The style for the highlighted/selected completion row
+	SelectedRowStyle lipgloss.Style
+	// The style for odd completion rows
+	RowStyle lipgloss.Style
+	// The style for even completion rows
+	AltRowStyle lipgloss.Style
+	// The border style for the completions box
+	CompletionsBorderStyle lipgloss.Style
+	// The style applied to descriptions (dim)
+	DescriptionStyle lipgloss.Style
+	// The style for the vertical scrollbar thumb
+	ScrollbarThumbStyle lipgloss.Style
+	// The style for the vertical scrollbar track
+	ScrollbarTrackStyle lipgloss.Style
+	// Whether to show type indicator icons
+	ShowIcons bool
+	// The icon for command completions
+	CommandIcon string
+	// The icon for argument completions
+	ArgumentIcon string
+	// The icon for flag completions
+	FlagIcon string
+	// The style for type icons
+	IconStyle lipgloss.Style
 }
 
 type Completion interface {
@@ -236,27 +257,35 @@ func New(commands []*Command, width int) (Model, error) {
 	inputKeyMap.PrevSuggestion = key.NewBinding()
 	input.KeyMap = inputKeyMap
 
-	progress := progress.New(progress.WithDefaultGradient())
-	progress.ShowPercentage = false
-
 	return Model{
-		input:               input,
-		Commands:            commands,
-		width:               width,
-		completionIndex:     -1,
-		historyIndex:        -1,
-		HistoryLimit:        100,
-		Autotrim:            true,
-		IndentCompletions:   true,
-		CompletionsOffset:   0,
-		ValidCommandStyle:   lg.Foreground(green),
-		InvalidCommandStyle: lg.Foreground(textColor),
-		scrollbarProgress:   progress,
-		ShowBorderScroll:    false,
-		ShowScrollbar:       false,
-		CompletionsPosition: PositionBelow,
-		CompletionRows:      5,
-		MatchHighlightStyle: lg.Bold(true),
+		input:                  input,
+		Commands:               commands,
+		width:                  width,
+		completionIndex:        -1,
+		historyIndex:           -1,
+		HistoryLimit:           100,
+		Autotrim:               true,
+		IndentCompletions:      true,
+		CompletionsOffset:      0,
+		ValidCommandStyle:      lg.Foreground(validColor),
+		InvalidCommandStyle:    lg.Foreground(defaultTextColor),
+		ShowBorderScroll:       false,
+		ShowScrollbar:          false,
+		CompletionsPosition:    PositionBelow,
+		CompletionRows:         5,
+		MatchHighlightStyle:    lg.Bold(true).Foreground(accentColor),
+		SelectedRowStyle:       lg.Foreground(defaultTextColor).Background(accentBgColor).Bold(true),
+		RowStyle:               lg.Background(rowBgColor).Foreground(defaultTextColor),
+		AltRowStyle:            lg.Background(altRowBgColor).Foreground(defaultTextColor),
+		CompletionsBorderStyle: lg.Border(lipgloss.RoundedBorder()).BorderForeground(borderColor),
+		DescriptionStyle:       lg.Foreground(mutedTextColor),
+		ScrollbarThumbStyle:    lg.Foreground(accentColor),
+		ScrollbarTrackStyle:    lg.Foreground(borderColor),
+		ShowIcons:              false,
+		CommandIcon:            "\u203A",
+		ArgumentIcon:           "\u25C6",
+		FlagIcon:               "\u25C7",
+		IconStyle:              lg.Foreground(accentColor),
 	}, nil
 }
 

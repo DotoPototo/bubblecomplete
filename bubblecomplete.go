@@ -142,7 +142,6 @@ func (m *Model) CloseCompletions() {
 		m.completionHolder = ""
 	}
 	m.completionIndex = -1
-	m.scrollbarPercent = 0
 	m.matchPrefix = ""
 	m.showAll = false
 }
@@ -187,7 +186,6 @@ func (m Model) resetModel() Model {
 	m.input.SetValue("")
 	m.completions = []Completion{}
 	m.completionIndex = -1
-	m.scrollbarPercent = 0
 	m.matchPrefix = ""
 	m.historyIndex = -1
 	return m
@@ -337,9 +335,6 @@ func (m Model) keyTab(input string) (Model, tea.Cmd) {
 		m.completionHolder = m.input.Value()
 	}
 
-	// Update the scroll bar percent
-	m.scrollbarPercent = (float64(m.completionIndex) + 1) / float64(len(m.completions))
-
 	// If the completion index is -1, reset the input to the completion holder
 	if m.completionIndex == -1 {
 		m.input.SetValue(m.completionHolder)
@@ -393,7 +388,6 @@ func (m Model) keyEnter() (Model, tea.Cmd) {
 func (m Model) keyBackspace() (Model, tea.Cmd) {
 	m.completionHolder = ""
 	m.completionIndex = -1
-	m.scrollbarPercent = 0
 	m.historyIndex = -1
 	m.filteredHistory = []string{}
 	m.showAll = false
@@ -407,7 +401,6 @@ func (m Model) keyDefault(msg string) (Model, tea.Cmd) {
 
 	m.completionHolder = ""
 	m.completionIndex = -1
-	m.scrollbarPercent = 0
 	m.historyIndex = -1
 	m.filteredHistory = []string{}
 	m.showAll = false

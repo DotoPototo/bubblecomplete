@@ -51,14 +51,12 @@ func TestMatchHighlightApplied(t *testing.T) {
 		t.Fatal("Expected completions, got none")
 	}
 
-	// Render and verify the bold escape appears around the matched prefix
+	// Render and verify the match highlight style appears around the matched prefix
 	output := m.View()
-	if !strings.Contains(output, "\033[1m") {
-		t.Errorf("Expected bold ANSI escape in output for match highlight")
-	}
-	// "co" should be styled, "mmit" should not be styled inline with it
-	if !strings.Contains(output, "\033[1mco\033[0m") {
-		t.Errorf("Expected bold-wrapped 'co' (\\033[1mco\\033[0m) in output, got: %q", output)
+	// "co" should be styled with MatchHighlightStyle, "mmit" should not
+	styledCo := m.MatchHighlightStyle.Render("co")
+	if !strings.Contains(output, styledCo) {
+		t.Errorf("Expected styled 'co' (%q) in output, got: %q", styledCo, output)
 	}
 }
 
@@ -84,9 +82,10 @@ func TestMatchHighlightLongFlag(t *testing.T) {
 	}
 
 	output := m.View()
-	// The "--me" portion of "--message" should be bold-highlighted
-	if !strings.Contains(output, "\033[1m--me\033[0m") {
-		t.Errorf("Expected bold-wrapped '--me' in output, got: %q", output)
+	// The "--me" portion of "--message" should be highlighted with MatchHighlightStyle
+	styledMe := m.MatchHighlightStyle.Render("--me")
+	if !strings.Contains(output, styledMe) {
+		t.Errorf("Expected styled '--me' (%q) in output, got: %q", styledMe, output)
 	}
 }
 
@@ -108,10 +107,14 @@ func TestNoMatchHighlightWhenShowingAll(t *testing.T) {
 		t.Errorf("Expected empty matchPrefix, got %q", m.matchPrefix)
 	}
 
-	// Rendered output should contain no bold escapes from match highlighting
+	// Rendered output should contain no match highlighting escapes
 	output := m.View()
-	if strings.Contains(output, "\033[1m") {
-		t.Errorf("Expected no bold ANSI escape when showing all completions, but found one")
+	// With empty prefix, no completion name should have the MatchHighlightStyle applied
+	styledTest := m.MatchHighlightStyle.Render("x")
+	// Extract the ANSI prefix (everything before the content character)
+	highlightPrefix := styledTest[:len(styledTest)-len("x\033[0m")]
+	if strings.Contains(output, highlightPrefix) {
+		t.Errorf("Expected no match highlight escape when showing all completions, but found one")
 	}
 }
 

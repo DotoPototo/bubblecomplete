@@ -57,17 +57,42 @@ func (m Model) showCompletionsRender() string {
 				name = lipgloss.StyleRanges(name, lipgloss.NewRange(start, end, m.MatchHighlightStyle))
 			}
 
+			// Prepend type indicator icon
+			if m.ShowIcons {
+				var icon string
+				switch comp.(type) {
+				case *Command, Command:
+					icon = m.CommandIcon
+				case *PositionalArgument, PositionalArgument:
+					icon = m.ArgumentIcon
+				case *Flag, Flag:
+					icon = m.FlagIcon
+				}
+				if icon != "" {
+					name = m.IconStyle.Render(icon) + " " + name
+				}
+			}
+
 			completionTitles = append(completionTitles, name)
 			completionDescriptions = append(completionDescriptions, description)
 		}
 	}
 	maxTitleLength += titlePadding
+	if m.ShowIcons {
+		maxTitleLength += 2 // icon char + space
+	}
 	maxLineLength := maxTitleLength + maxDescriptionLength
 
 	// Create each completion row
 	completionsRow := make([]string, 0, len(completionTitles))
 	completionsWidth := m.getCompletionsWidth(maxLineLength)
+	descMaxWidth := completionsWidth - maxTitleLength - 2
 	for i := 0; i < len(completionTitles); i++ {
+		descText := truncateDescription(completionDescriptions[i], descMaxWidth)
+		if i != m.completionIndex {
+			descText = m.DescriptionStyle.Render(descText)
+		}
+
 		titleWidth := lipgloss.Width(completionTitles[i])
 		rowText := lipgloss.JoinHorizontal(
 			lipgloss.Left,
@@ -76,24 +101,24 @@ func (m Model) showCompletionsRender() string {
 			lg.
 				Width(completionsWidth-titleWidth).
 				PaddingLeft(maxTitleLength-titleWidth).
-				Render(completionDescriptions[i]),
+				Render(descText),
 			" ",
 		)
 
 		if i == m.completionIndex {
 			completionsRow = append(
 				completionsRow,
-				highlightedCompletionStyle.Render(rowText),
+				m.SelectedRowStyle.Render(rowText),
 			)
 		} else if i%2 == 0 {
 			completionsRow = append(
 				completionsRow,
-				altCompletionRowStyle.Render(rowText),
+				m.AltRowStyle.Render(rowText),
 			)
 		} else {
 			completionsRow = append(
 				completionsRow,
-				completionRowStyle.Render(rowText),
+				m.RowStyle.Render(rowText),
 			)
 		}
 	}
@@ -103,19 +128,20 @@ func (m Model) showCompletionsRender() string {
 		startCompletionsIndex := max(0, m.completionIndex-(m.CompletionRows-1))
 		endCompletionsIndex := min(len(completionsRow), startCompletionsIndex+m.CompletionRows)
 
-		completions := lipgloss.JoinVertical(
-			lipgloss.Left,
-			completionsRow[startCompletionsIndex:endCompletionsIndex]...,
-		)
+		visibleRows := make([]string, endCompletionsIndex-startCompletionsIndex)
+		copy(visibleRows, completionsRow[startCompletionsIndex:endCompletionsIndex])
 
 		if len(completionsRow) > m.CompletionRows && m.ShowScrollbar {
-			m.scrollbarProgress.Width = maxLineLength + titlePadding
-			completions = lipgloss.JoinVertical(
-				lipgloss.Left,
-				completions,
-				m.scrollbarProgress.ViewAs(m.scrollbarPercent),
-			)
+			scrollbar := m.renderScrollbar(len(visibleRows), len(completionsRow), startCompletionsIndex)
+			for j := range visibleRows {
+				visibleRows[j] = lipgloss.JoinHorizontal(lipgloss.Left, visibleRows[j], scrollbar[j])
+			}
 		}
+
+		completions := lipgloss.JoinVertical(
+			lipgloss.Left,
+			visibleRows...,
+		)
 
 		offset := m.calculateCompletionsOffset(completions)
 
@@ -135,17 +161,17 @@ func (m Model) showCompletionsRender() string {
 
 func (m Model) getCompletionsStyle(startCompletionsIndex int, endCompletionsIndex int, rows int) lipgloss.Style {
 	if !m.ShowBorderScroll {
-		return completionsBoxStyle
+		return m.CompletionsBorderStyle
 	}
 
 	if startCompletionsIndex > 0 && endCompletionsIndex < rows {
-		return completionsBoxScrollStyle
+		return m.CompletionsBorderStyle.BorderTopForeground(scrollIndicatorColor).BorderBottomForeground(scrollIndicatorColor)
 	} else if startCompletionsIndex > 0 {
-		return completionsBoxScrollUpStyle
+		return m.CompletionsBorderStyle.BorderTopForeground(scrollIndicatorColor)
 	} else if endCompletionsIndex < rows {
-		return completionsBoxScrollDownStyle
+		return m.CompletionsBorderStyle.BorderBottomForeground(scrollIndicatorColor)
 	} else {
-		return completionsBoxStyle
+		return m.CompletionsBorderStyle
 	}
 }
 
@@ -215,4 +241,34 @@ func findMatchRange(name, lowerPrefix string, prefixRuneLen int) (int, int) {
 
 func stringEndsInQuote(s string) bool {
 	return strings.HasSuffix(s, "\"") || strings.HasSuffix(s, "'")
+}
+
+func truncateDescription(s string, maxWidth int) string {
+	if maxWidth <= 0 {
+		return ""
+	}
+	if utf8.RuneCountInString(s) <= maxWidth {
+		return s
+	}
+	runes := []rune(s)
+	return string(runes[:maxWidth-1]) + "\u2026"
+}
+
+func (m Model) renderScrollbar(height, totalItems, offset int) []string {
+	thumbSize := max(1, height*height/totalItems)
+	scrollRange := totalItems - height
+	trackRange := height - thumbSize
+	thumbStart := 0
+	if scrollRange > 0 {
+		thumbStart = offset * trackRange / scrollRange
+	}
+	result := make([]string, height)
+	for i := range height {
+		if i >= thumbStart && i < thumbStart+thumbSize {
+			result[i] = m.ScrollbarThumbStyle.Render("\u2503")
+		} else {
+			result[i] = m.ScrollbarTrackStyle.Render("\u2502")
+		}
+	}
+	return result
 }

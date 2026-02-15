@@ -2,25 +2,19 @@ package bubblecomplete
 
 import "github.com/charmbracelet/lipgloss"
 
-// Colors
+// Colors — Charm-inspired palette with semantic naming.
+// Purple accent, proper text hierarchy, subtle alternating rows.
 var (
-	green        = lipgloss.AdaptiveColor{Light: "#02BA84", Dark: "#02BF87"}
-	pink         = lipgloss.AdaptiveColor{Light: "#FF2C70", Dark: "#FF2C70"}
-	pinkBg       = lipgloss.AdaptiveColor{Light: "#19040b", Dark: "#19040b"}
-	bluegray     = lipgloss.AdaptiveColor{Light: "#5C6773", Dark: "#1f262d"}
-	darkBluegray = lipgloss.AdaptiveColor{Light: "#3D4852", Dark: "#12161B"}
-	textColor    = lipgloss.AdaptiveColor{Light: "#000000", Dark: "#ffffff"}
-	scrollColor  = lipgloss.AdaptiveColor{Light: "#3f0d1d", Dark: "#3f0d1d"}
+	accentColor          = lipgloss.AdaptiveColor{Light: "#8839EF", Dark: "#CBA6F7"}
+	accentBgColor        = lipgloss.AdaptiveColor{Light: "#E8DBFC", Dark: "#2E2555"}
+	rowBgColor           = lipgloss.AdaptiveColor{Light: "#E6E9EF", Dark: "#1E1E2E"}
+	altRowBgColor        = lipgloss.AdaptiveColor{Light: "#EFF1F5", Dark: "#181825"}
+	defaultTextColor     = lipgloss.AdaptiveColor{Light: "#4C4F69", Dark: "#CDD6F4"}
+	mutedTextColor       = lipgloss.AdaptiveColor{Light: "#7C7F93", Dark: "#6C7086"}
+	borderColor          = lipgloss.AdaptiveColor{Light: "#CCD0DA", Dark: "#313244"}
+	scrollIndicatorColor = lipgloss.AdaptiveColor{Light: "#9CA0B0", Dark: "#45475A"}
+	validColor           = lipgloss.AdaptiveColor{Light: "#40A02B", Dark: "#A6E3A1"}
 )
 
 // Styles
-var (
-	lg                            = lipgloss.NewStyle()
-	highlightedCompletionStyle    = lg.Foreground(pink).Background(pinkBg).Bold(true)
-	completionRowStyle            = lg.Background(bluegray)
-	altCompletionRowStyle         = lg.Background(darkBluegray)
-	completionsBoxStyle           = lg.Border(lipgloss.RoundedBorder()).BorderStyle(lipgloss.ThickBorder()).BorderForeground(bluegray)
-	completionsBoxScrollStyle     = completionsBoxStyle.BorderTopForeground(scrollColor).BorderBottomForeground(scrollColor)
-	completionsBoxScrollDownStyle = completionsBoxStyle.BorderBottomForeground(scrollColor)
-	completionsBoxScrollUpStyle   = completionsBoxStyle.BorderTopForeground(scrollColor)
-)
+var lg = lipgloss.NewStyle()

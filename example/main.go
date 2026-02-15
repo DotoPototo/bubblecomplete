@@ -34,6 +34,9 @@ func initialModel() tea.Model {
 
 	bc.CompletionsPosition = bubblecomplete.PositionBelow
 	bc.ShowBorderScroll = true
+	bc.ShowScrollbar = true
+	bc.ShowIcons = true
+	bc.CompletionRows = 7
 	home, _ := os.UserHomeDir()
 	historyFilePath := home + "/.bubblecomplete_history.json"
 	bc.SetHistoryFilePath(historyFilePath)
