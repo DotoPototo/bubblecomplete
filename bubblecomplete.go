@@ -57,7 +57,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	// If the input has changed, update the completions and validate the input
 	if m.input.Value() != "" && m.input.Value() != m.lastInput && m.completionHolder == "" && !m.showAll {
 		m.lastInput = m.input.Value()
-		m.completions = m.getCompletions()
+		m.completions, m.matchPrefix = m.getCompletions()
 		m.validCommand = m.validateInput()
 	}
 
@@ -140,6 +140,7 @@ func (m *Model) CloseCompletions() {
 		m.completionHolder = ""
 	}
 	m.completionIndex = -1
+	m.matchPrefix = ""
 	m.showAll = false
 }
 
@@ -189,6 +190,7 @@ func (m Model) resetModel() Model {
 	m.input.SetValue("")
 	m.completions = []Completion{}
 	m.completionIndex = -1
+	m.matchPrefix = ""
 	m.historyIndex = -1
 	return m
 }
@@ -299,7 +301,7 @@ func (m Model) keyTab(input string) (Model, tea.Cmd) {
 	// If the input is empty, show all completions
 	if trimmedInput == "" && !m.showAll {
 		m.showAll = true
-		m.completions = m.getCompletions()
+		m.completions, m.matchPrefix = m.getCompletions()
 		return m, nil
 	}
 

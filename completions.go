@@ -8,23 +8,24 @@ import (
 	"unicode"
 )
 
-func (m Model) getCompletions() []Completion {
+func (m Model) getCompletions() ([]Completion, string) {
 	if m.input.Value() == "" && !m.showAll {
-		return []Completion{}
+		return []Completion{}, ""
 	}
 	var allCompletions []Completion
+	var matchPrefix string
 
 	if strings.TrimSpace(m.input.Value()) == "" && m.showAll {
 		for _, c := range m.Commands {
 			allCompletions = append(allCompletions, c)
 		}
 	} else {
-		allCompletions = getCompletions(m.input.Value(), m.Commands)
+		allCompletions, matchPrefix = getCompletions(m.input.Value(), m.Commands)
 	}
 
 	sortCompletions(&allCompletions)
 	uniqueCompletions(&allCompletions)
-	return allCompletions
+	return allCompletions, matchPrefix
 }
 
 func sortCompletions(completions *[]Completion) {
@@ -64,19 +65,19 @@ func uniqueCompletions(completions *[]Completion) {
 }
 
 // getCompletions gets completions for the input based on the available commands
-func getCompletions(input string, commands []*Command) []Completion {
+func getCompletions(input string, commands []*Command) ([]Completion, string) {
 	var completions []Completion
 	var globalFlags []*Flag
 
 	// If the input is empty, return nothing
 	if strings.TrimSpace(input) == "" {
-		return []Completion{}
+		return []Completion{}, ""
 	}
 
 	// Split the input into parts so we can handle each part separately
 	parts := splitInput(input)
 	if len(parts) == 0 {
-		return []Completion{}
+		return []Completion{}, ""
 	}
 
 	// If there is only one part and the input doesn't end with a space, we're still typing the first command
@@ -87,7 +88,7 @@ func getCompletions(input string, commands []*Command) []Completion {
 				completions = append(completions, c)
 			}
 		}
-		return completions
+		return completions, parts[0]
 	}
 
 	// Otherwise we have at least one command entered so find the final valid command entered
@@ -113,7 +114,7 @@ func getCompletions(input string, commands []*Command) []Completion {
 
 	// If we haven't found any command, it must be invalid input so return nothing
 	if finalCommand == nil {
-		return []Completion{}
+		return []Completion{}, ""
 	}
 
 	// From here it's if - return statements
@@ -121,22 +122,27 @@ func getCompletions(input string, commands []*Command) []Completion {
 	argParts := parts[commandDepth:]
 	posArgs, flagArgs := splitPositionArgsAndFlags(argParts, finalCommand)
 
+	matchPrefix := ""
+	if !strings.HasSuffix(input, " ") && len(argParts) > 0 {
+		matchPrefix = argParts[len(argParts)-1]
+	}
+
 	// If the final command has subcommands
 	if len(finalCommand.SubCommands) > 0 {
 		completions = handleSubCommandCompletions(finalCommand, parts, commandDepth, input, flagArgs, globalFlags)
-		return completions
+		return completions, matchPrefix
 	}
 
 	// If the final command has positional arguments
 	if len(finalCommand.PositionalArguments) > 0 {
 		completions = handlePositionalArgumentCompletions(finalCommand, posArgs, flagArgs, input, argParts, globalFlags)
-		return completions
+		return completions, matchPrefix
 	}
 
 	// Otherwise show only the flags
 	flagCompletions, _ := getFlagCompletions(input, finalCommand, flagArgs, globalFlags)
 	completions = append(completions, flagCompletions...)
-	return completions
+	return completions, matchPrefix
 }
 
 func handleSubCommandCompletions(

@@ -31,6 +31,7 @@ type Model struct {
 	completionIndex  int
 	completionHolder string
 	showAll          bool
+	matchPrefix      string
 
 	// ---- History ----
 
@@ -69,6 +70,8 @@ type Model struct {
 	CompletionsPosition Position
 	// The number of rows to show in the completions
 	CompletionRows int
+	// The text style for the matched prefix in completion names
+	MatchHighlightStyle lipgloss.Style
 }
 
 type Completion interface {
@@ -252,6 +255,7 @@ func New(commands []*Command, width int) (Model, error) {
 		ShowScrollbar:       false,
 		CompletionsPosition: PositionBelow,
 		CompletionRows:      5,
+		MatchHighlightStyle: lg.Bold(true),
 	}, nil
 }
 

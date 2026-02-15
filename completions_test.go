@@ -346,7 +346,7 @@ func TestSortedGetCompletions(t *testing.T) {
 
 	for _, tc := range testCases {
 		t.Run(tc.name, func(t *testing.T) {
-			result := getCompletions(tc.input, TestCommands)
+			result, _ := getCompletions(tc.input, TestCommands)
 			sortCompletions(&result)
 			uniqueCompletions(&result)
 
@@ -361,6 +361,74 @@ func TestSortedGetCompletions(t *testing.T) {
 
 			if !reflect.DeepEqual(resultStrings, tc.expected) {
 				t.Errorf("Expected completions: %v, got: %v", tc.expected, resultStrings)
+			}
+		})
+	}
+}
+
+func TestGetCompletionsMatchPrefix(t *testing.T) {
+	testCases := []struct {
+		name           string
+		input          string
+		expectedPrefix string
+	}{
+		{
+			name:           "partial command prefix",
+			input:          "c",
+			expectedPrefix: "c",
+		},
+		{
+			name:           "longer partial command prefix",
+			input:          "ca",
+			expectedPrefix: "ca",
+		},
+		{
+			name:           "full command no trailing space",
+			input:          "cat",
+			expectedPrefix: "cat",
+		},
+		{
+			name:           "full command with trailing space shows all - no prefix",
+			input:          "cat ",
+			expectedPrefix: "",
+		},
+		{
+			name:           "subcommand partial prefix",
+			input:          "git co",
+			expectedPrefix: "co",
+		},
+		{
+			name:           "subcommand full with space - no prefix",
+			input:          "git commit ",
+			expectedPrefix: "",
+		},
+		{
+			name:           "flag partial prefix",
+			input:          "git commit -m",
+			expectedPrefix: "-m",
+		},
+		{
+			name:           "long flag partial prefix",
+			input:          "git commit --me",
+			expectedPrefix: "--me",
+		},
+		{
+			name:           "powershell flag partial prefix",
+			input:          "ps -f",
+			expectedPrefix: "-f",
+		},
+		{
+			name:           "empty input",
+			input:          " ",
+			expectedPrefix: "",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			_, prefix := getCompletions(tc.input, TestCommands)
+			if prefix != tc.expectedPrefix {
+				t.Errorf("Expected prefix %q, got %q", tc.expectedPrefix, prefix)
 			}
 		})
 	}

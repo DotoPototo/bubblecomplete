@@ -2,6 +2,7 @@ package bubblecomplete
 
 import (
 	"strings"
+	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -37,13 +38,13 @@ func (m Model) showCompletionsRender() string {
 	titlePadding := 3
 
 	// Get each completion text
+	lowerPrefix := strings.ToLower(m.matchPrefix)
+	prefixRuneLen := utf8.RuneCountInString(m.matchPrefix)
+
 	if len(m.completions) > 0 && (len(m.input.Value()) > 0 || m.showAll) {
 		for _, comp := range m.completions {
 			name := comp.getName()
 			description := comp.getDescription()
-
-			completionTitles = append(completionTitles, name)
-			completionDescriptions = append(completionDescriptions, description)
 
 			if len(name) > maxTitleLength {
 				maxTitleLength = len(name)
@@ -51,6 +52,14 @@ func (m Model) showCompletionsRender() string {
 			if len(description) > maxDescriptionLength {
 				maxDescriptionLength = len(description)
 			}
+
+			// Apply match highlighting to the matched portion of the name
+			if start, end := findMatchRange(name, lowerPrefix, prefixRuneLen); start >= 0 {
+				name = lipgloss.StyleRanges(name, lipgloss.NewRange(start, end, m.MatchHighlightStyle))
+			}
+
+			completionTitles = append(completionTitles, name)
+			completionDescriptions = append(completionDescriptions, description)
 		}
 	}
 	maxTitleLength += titlePadding
@@ -184,6 +193,25 @@ func (m Model) getCompletionsWidth(maxLineLength int) int {
 		return maxTermWidth
 	}
 	return maxLineLength
+}
+
+// findMatchRange finds the rune-based start and end positions where lowerPrefix
+// matches the beginning of any space-separated word in name.
+// This handles flag display names like "-m --message" where the prefix "--me"
+// should match the "--message" portion starting at rune position 3.
+// Returns (-1, -1) if no match is found.
+func findMatchRange(name, lowerPrefix string, prefixRuneLen int) (int, int) {
+	if lowerPrefix == "" {
+		return -1, -1
+	}
+	runePos := 0
+	for _, word := range strings.Split(name, " ") {
+		if strings.HasPrefix(strings.ToLower(word), lowerPrefix) {
+			return runePos, runePos + prefixRuneLen
+		}
+		runePos += utf8.RuneCountInString(word) + 1 // +1 for the space
+	}
+	return -1, -1
 }
 
 func stringEndsInQuote(s string) bool {
