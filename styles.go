@@ -3,7 +3,7 @@ package bubblecomplete
 import "github.com/charmbracelet/lipgloss"
 
 // Colors — Charm-inspired palette with semantic naming.
-// Purple accent, proper text hierarchy, subtle alternating rows.
+// Pink accent, proper text hierarchy, subtle alternating rows.
 var (
 	accentColor          = lipgloss.AdaptiveColor{Light: "#D6116B", Dark: "#F5639A"}
 	accentBgColor        = lipgloss.AdaptiveColor{Light: "#FDE8F0", Dark: "#3B1D2E"}
