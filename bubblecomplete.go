@@ -282,16 +282,7 @@ func (m Model) keyRight() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// TODO: Open Bubbletea issue about input supporting checking if a suggestion is available aka currentsuggestion is safe or out of length
-	hasSuggestion := false
-	for _, h := range m.History {
-		if strings.HasPrefix(h, m.input.Value()) && h != m.input.Value() {
-			hasSuggestion = true
-			break
-		}
-	}
-
-	if !hasSuggestion {
+	if len(m.input.MatchedSuggestions()) == 0 {
 		return m, nil
 	}
 	m.input.SetValue(m.input.CurrentSuggestion())
