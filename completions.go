@@ -2,7 +2,6 @@ package bubblecomplete
 
 import (
 	"fmt"
-	"regexp"
 	"slices"
 	"strings"
 	"unicode"
@@ -29,35 +28,32 @@ func (m Model) getCompletions() ([]Completion, string) {
 }
 
 func sortCompletions(completions *[]Completion) {
-	allCompletions := *completions
-	for i := 0; i < len(allCompletions); i++ {
-		for j := i + 1; j < len(allCompletions); j++ {
-			nameI := allCompletions[i].getName()
-			nameJ := allCompletions[j].getName()
+	slices.SortFunc(*completions, func(a, b Completion) int {
+		nameA := a.getName()
+		nameB := b.getName()
 
-			// Check if the names start with punctuation
-			isPunctI := unicode.IsPunct(rune(nameI[0]))
-			isPunctJ := unicode.IsPunct(rune(nameJ[0]))
+		isPunctA := unicode.IsPunct(rune(nameA[0]))
+		isPunctB := unicode.IsPunct(rune(nameB[0]))
 
-			// If the first name starts with punctuation and the second doesn't, swap them
-			if isPunctI && !isPunctJ {
-				allCompletions[i], allCompletions[j] = allCompletions[j], allCompletions[i]
-			} else if !isPunctI && isPunctJ {
-				// Keep the order as is
-				continue
-			} else if strings.ToLower(nameI) > strings.ToLower(nameJ) {
-				allCompletions[i], allCompletions[j] = allCompletions[j], allCompletions[i]
-			}
+		if isPunctA && !isPunctB {
+			return 1
 		}
-	}
+		if !isPunctA && isPunctB {
+			return -1
+		}
+		if cmp := strings.Compare(strings.ToLower(nameA), strings.ToLower(nameB)); cmp != 0 {
+			return cmp
+		}
+		return strings.Compare(nameA, nameB)
+	})
 }
 
 func uniqueCompletions(completions *[]Completion) {
-	keys := make(map[string]bool)
+	seen := make(map[string]struct{})
 	list := []Completion{}
 	for _, entry := range *completions {
-		if _, value := keys[entry.getName()]; !value {
-			keys[entry.getName()] = true
+		if _, exists := seen[entry.getName()]; !exists {
+			seen[entry.getName()] = struct{}{}
 			list = append(list, entry)
 		}
 	}
@@ -276,7 +272,7 @@ func isEnteringPosArgValue(input string, finalCommand *Command, posArgParts []st
 func getFlagCompletions(input string, finalCommand *Command, flagArgParts []string, globalFlags []*Flag) ([]Completion, bool) {
 	completions := []Completion{}
 
-	allFlags := append(finalCommand.Flags, globalFlags...)
+	allFlags := slices.Concat(finalCommand.Flags, globalFlags)
 
 	// If we haven't entered any flags yet, show all flags
 	if len(flagArgParts) == 0 {
@@ -317,12 +313,13 @@ func getFlagCompletions(input string, finalCommand *Command, flagArgParts []stri
 			}
 		} else if strings.HasPrefix(flag.ShortFlag, finalPart) || strings.HasPrefix(flag.LongFlag, finalPart) { // Otherwise handle traditional flags
 			// If the last argument is a combined short flag, only check for the last character flag
+			flagToCompare := finalPart
 			if !strings.HasPrefix(finalPart, "--") && len(finalPart) > 2 {
-				finalPart = "-" + finalPart[len(finalPart)-1:]
+				flagToCompare = "-" + finalPart[len(finalPart)-1:]
 			}
 
 			// Filter out arguments that have already been entered except for the one we're entering
-			if !containsFlag(input, flag) || (finalPart == flag.ShortFlag || finalPart == flag.LongFlag) {
+			if !containsFlag(input, flag) || (flagToCompare == flag.ShortFlag || flagToCompare == flag.LongFlag) {
 				completions = append(completions, flag)
 			}
 		}
@@ -380,12 +377,13 @@ func needToEnterFlagValue(finalCommand *Command, flagArgParts []string) (bool, *
 
 	for _, flag := range finalCommand.Flags {
 		// If the last argument is a combined short flag, only check for the last character flag
+		flagToCompare := lastArgument
 		if flag.PsFlag == "" && !strings.HasPrefix(lastArgument, "--") && len(lastArgument) > 2 {
-			lastArgument = "-" + lastArgument[len(lastArgument)-1:]
+			flagToCompare = "-" + lastArgument[len(lastArgument)-1:]
 		}
 
 		// If the last argument contains a flag and isn't a long flag / psflag with an equals sign pattern
-		if containsFlag(lastArgument, flag) && !strings.Contains(lastArgument, fmt.Sprintf("%s=", flag.LongFlag)) && !strings.Contains(lastArgument, fmt.Sprintf("%s=", flag.PsFlag)) {
+		if containsFlag(flagToCompare, flag) && !strings.Contains(lastArgument, fmt.Sprintf("%s=", flag.LongFlag)) && !strings.Contains(lastArgument, fmt.Sprintf("%s=", flag.PsFlag)) {
 			// Bool arguments don't need a value
 			if flag.Type != BoolArgument {
 				return true, flag
@@ -514,9 +512,37 @@ func containsShortFlag(command string, flag string) bool {
 	if len(flag) > 0 && flag[0] == '-' {
 		flag = flag[1:]
 	}
-	pattern := fmt.Sprintf(`(^|\s)-[a-zA-Z]*%s[a-zA-Z]*($|\s)`, regexp.QuoteMeta(flag))
-	match, _ := regexp.MatchString(pattern, command)
-	return match
+	if len(flag) != 1 {
+		return false
+	}
+	flagChar := flag[0]
+
+	// Split on whitespace and check each token
+	for _, token := range strings.Fields(command) {
+		// Must start with '-' but not '--'
+		if !strings.HasPrefix(token, "-") || strings.HasPrefix(token, "--") {
+			continue
+		}
+		// The token after '-' must be purely alphabetical (matching the original regex [a-zA-Z]*)
+		body := token[1:]
+		allAlpha := true
+		for i := 0; i < len(body); i++ {
+			if !((body[i] >= 'a' && body[i] <= 'z') || (body[i] >= 'A' && body[i] <= 'Z')) {
+				allAlpha = false
+				break
+			}
+		}
+		if !allAlpha || len(body) == 0 {
+			continue
+		}
+		// Check if the flag character appears in the body
+		for i := 0; i < len(body); i++ {
+			if body[i] == flagChar {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 func containsLongFlag(command string, flag string) bool {

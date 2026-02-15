@@ -23,7 +23,7 @@ type Model struct {
 
 	// The commands available
 	Commands     []*Command
-	validCommand error
+	validationErr error
 
 	// ---- Completions ----
 
@@ -46,6 +46,7 @@ type Model struct {
 	Err               error
 	loaded            bool
 	scrollbarProgress progress.Model
+	scrollbarPercent  float64
 	width             int
 
 	// ---- Options ----

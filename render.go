@@ -7,7 +7,6 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var scrollbarPercent float64
 var minCompletionsSize = 60
 
 // MARK: Public Functions
@@ -25,7 +24,7 @@ func (m Model) View() string {
 // MARK: Private Functions
 
 func (m Model) showCompletionsRender() string {
-	if m.validCommand == nil {
+	if m.validationErr == nil {
 		m.input.TextStyle = m.ValidCommandStyle
 	} else {
 		m.input.TextStyle = m.InvalidCommandStyle
@@ -114,7 +113,7 @@ func (m Model) showCompletionsRender() string {
 			completions = lipgloss.JoinVertical(
 				lipgloss.Left,
 				completions,
-				m.scrollbarProgress.ViewAs(scrollbarPercent),
+				m.scrollbarProgress.ViewAs(m.scrollbarPercent),
 			)
 		}
 
@@ -215,8 +214,5 @@ func findMatchRange(name, lowerPrefix string, prefixRuneLen int) (int, int) {
 }
 
 func stringEndsInQuote(s string) bool {
-	if strings.HasSuffix(s, "\"") || strings.HasSuffix(s, "'") {
-		return true
-	}
-	return false
+	return strings.HasSuffix(s, "\"") || strings.HasSuffix(s, "'")
 }

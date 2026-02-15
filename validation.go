@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"slices"
 	"strconv"
 	"strings"
 )
@@ -13,11 +14,7 @@ func (m *Model) validateInput() error {
 		return nil
 	}
 
-	err := validateCommandInput(m.input.Value(), m.Commands)
-	if err != nil {
-		return err
-	}
-	return nil
+	return validateCommandInput(m.input.Value(), m.Commands)
 }
 
 func validateCommandInput(input string, commands []*Command) error {
@@ -58,18 +55,16 @@ func validateCommandInput(input string, commands []*Command) error {
 		}
 
 		if strings.HasPrefix(part, "--") {
-			err := validateLongFlag(part, parts, &i, parentCmd, globalFlags)
-			if err != nil {
+			if err := validateFlag(part, parts, &i, parentCmd, globalFlags); err != nil {
 				return err
 			}
 			continue
 		}
 
-		if strings.HasPrefix(part, "-") && !strings.HasPrefix(part, "--") {
+		if strings.HasPrefix(part, "-") {
 			err := validateShortFlags(part, parts, &i, parentCmd, globalFlags)
 			if err != nil {
-				err := validatePowerShellFlags(part, parts, &i, parentCmd, globalFlags)
-				if err != nil {
+				if err := validateFlag(part, parts, &i, parentCmd, globalFlags); err != nil {
 					return err
 				}
 			}
@@ -101,7 +96,7 @@ func validateCommandInput(input string, commands []*Command) error {
 	return nil
 }
 
-func validatePowerShellFlags(part string, parts []string, i *int, parentCmd *Command, globalFlags []*Flag) error {
+func validateFlag(part string, parts []string, i *int, parentCmd *Command, globalFlags []*Flag) error {
 	argName := part
 	argValue := ""
 
@@ -115,7 +110,7 @@ func validatePowerShellFlags(part string, parts []string, i *int, parentCmd *Com
 		return errors.New("invalid flag: " + part)
 	}
 
-	allFlags := append(parentCmd.Flags, globalFlags...)
+	allFlags := slices.Concat(parentCmd.Flags, globalFlags)
 	arg, err := findFlag(allFlags, argName)
 	if err != nil {
 		return fmt.Errorf("flag '%s' not found", argName)
@@ -129,46 +124,7 @@ func validatePowerShellFlags(part string, parts []string, i *int, parentCmd *Com
 		*i++
 	}
 
-	err = validateArgumentValue(arg, argValue)
-	if err != nil {
-		return err
-	}
-	return nil
-}
-
-func validateLongFlag(part string, parts []string, i *int, parentCmd *Command, globalFlags []*Flag) error {
-	argName := part
-	argValue := ""
-
-	if strings.Contains(part, "=") {
-		argParts := strings.SplitN(part, "=", 2)
-		argName = argParts[0]
-		argValue = argParts[1]
-	}
-
-	if parentCmd == nil {
-		return errors.New("invalid flag: " + part)
-	}
-
-	allFlags := append(parentCmd.Flags, globalFlags...)
-	arg, err := findFlag(allFlags, argName)
-	if err != nil {
-		return fmt.Errorf("flag '%s' not found", argName)
-	}
-
-	if arg.getType() != BoolArgument && argValue == "" {
-		if *i == len(parts)-1 || strings.HasPrefix(parts[*i+1], "-") {
-			return fmt.Errorf("missing value for flag '%s'", argName)
-		}
-		argValue = parts[*i+1]
-		*i++
-	}
-
-	err = validateArgumentValue(arg, argValue)
-	if err != nil {
-		return err
-	}
-	return nil
+	return validateArgumentValue(arg, argValue)
 }
 
 func validateShortFlags(part string, parts []string, i *int, parentCmd *Command, globalFlags []*Flag) error {
@@ -186,7 +142,7 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 			return errors.New("invalid argument: " + part)
 		}
 
-		allFlags := append(parentCmd.Flags, globalFlags...)
+		allFlags := slices.Concat(parentCmd.Flags, globalFlags)
 		arg, err := findFlag(allFlags, argName)
 		if err != nil {
 			return fmt.Errorf("flag '%s' not found", argName)
@@ -313,44 +269,42 @@ func validateFloatArgument(arg Argument, value string) error {
 }
 
 func validateFileArgument(arg Argument, value string) error {
-	value = removeQuotes(value)
-	file, err := os.Stat(value)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return errors.New("file does not exist for argument: " + arg.getName())
-		}
-		return errors.New("error accessing file for argument: " + arg.getName())
-	}
-	if file.IsDir() {
-		return errors.New("file path is a directory: " + arg.getName())
-	}
-	return nil
+	return validatePath(arg, value, true, false)
 }
 
 func validateDirArgument(arg Argument, value string) error {
-	value = removeQuotes(value)
-	file, err := os.Stat(value)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return errors.New("directory does not exist for argument: " + arg.getName())
-		}
-		return errors.New("error accessing directory for argument: " + arg.getName())
-	}
-	if !file.IsDir() {
-		return errors.New("directory path is a file: " + arg.getName())
-	}
-	return nil
+	return validatePath(arg, value, false, true)
 }
 
 func validateFileDirArgument(arg Argument, value string) error {
-	// If value is wrapped in quotes, remove them
+	return validatePath(arg, value, true, true)
+}
+
+func validatePath(arg Argument, value string, wantFile, wantDir bool) error {
 	value = removeQuotes(value)
-	_, err := os.Stat(value)
+
+	var pathType string
+	switch {
+	case wantFile && wantDir:
+		pathType = "file or directory"
+	case wantFile:
+		pathType = "file"
+	default:
+		pathType = "directory"
+	}
+
+	info, err := os.Stat(value)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return errors.New("file or directory does not exist for argument: " + arg.getName())
+			return fmt.Errorf("%s does not exist for argument: %s", pathType, arg.getName())
 		}
-		return errors.New("error accessing file or directory for argument: " + arg.getName())
+		return fmt.Errorf("error accessing %s for argument: %s", pathType, arg.getName())
+	}
+	if !wantDir && info.IsDir() {
+		return errors.New("file path is a directory: " + arg.getName())
+	}
+	if !wantFile && !info.IsDir() {
+		return errors.New("directory path is a file: " + arg.getName())
 	}
 	return nil
 }

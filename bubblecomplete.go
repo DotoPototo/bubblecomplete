@@ -58,7 +58,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	if m.input.Value() != "" && m.input.Value() != m.lastInput && m.completionHolder == "" && !m.showAll {
 		m.lastInput = m.input.Value()
 		m.completions, m.matchPrefix = m.getCompletions()
-		m.validCommand = m.validateInput()
+		m.validationErr = m.validateInput()
 	}
 
 	// If not loaded, start the blinking cursor
@@ -119,7 +119,9 @@ func (m *Model) SetHistoryFilePath(path string) {
 // If the history file path is set, it also clears the history on file.
 func (m *Model) ClearHistory() {
 	m.History = []string{}
-	m.saveHistoryToFile()
+	if m.historyFilePath != "" {
+		m.Err = m.saveHistoryToFile()
+	}
 }
 
 // ShowingCompletions returns true if the completions are currently visible
@@ -140,6 +142,7 @@ func (m *Model) CloseCompletions() {
 		m.completionHolder = ""
 	}
 	m.completionIndex = -1
+	m.scrollbarPercent = 0
 	m.matchPrefix = ""
 	m.showAll = false
 }
@@ -161,17 +164,11 @@ func (m *Model) saveHistoryToFile() error {
 }
 
 func (m *Model) loadHistoryFromFile() error {
-	file, err := os.Open(m.historyFilePath)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return nil
-		}
-		return err
-	}
-	defer file.Close()
-
 	data, err := os.ReadFile(m.historyFilePath)
 	if err != nil {
+		if errors.Is(err, os.ErrNotExist) {
+			return nil
+		}
 		return err
 	}
 
@@ -190,6 +187,7 @@ func (m Model) resetModel() Model {
 	m.input.SetValue("")
 	m.completions = []Completion{}
 	m.completionIndex = -1
+	m.scrollbarPercent = 0
 	m.matchPrefix = ""
 	m.historyIndex = -1
 	return m
@@ -340,7 +338,7 @@ func (m Model) keyTab(input string) (Model, tea.Cmd) {
 	}
 
 	// Update the scroll bar percent
-	scrollbarPercent = (float64(m.completionIndex) + 1) / float64(len(m.completions))
+	m.scrollbarPercent = (float64(m.completionIndex) + 1) / float64(len(m.completions))
 
 	// If the completion index is -1, reset the input to the completion holder
 	if m.completionIndex == -1 {
@@ -388,13 +386,14 @@ func (m Model) keyEnter() (Model, tea.Cmd) {
 	m.input.SetSuggestions(m.History)
 
 	return m, func() tea.Msg {
-		return SelectedCommandMsg{Command: command, Err: m.validCommand}
+		return SelectedCommandMsg{Command: command, Err: m.validationErr}
 	}
 }
 
 func (m Model) keyBackspace() (Model, tea.Cmd) {
 	m.completionHolder = ""
 	m.completionIndex = -1
+	m.scrollbarPercent = 0
 	m.historyIndex = -1
 	m.filteredHistory = []string{}
 	m.showAll = false
@@ -408,6 +407,7 @@ func (m Model) keyDefault(msg string) (Model, tea.Cmd) {
 
 	m.completionHolder = ""
 	m.completionIndex = -1
+	m.scrollbarPercent = 0
 	m.historyIndex = -1
 	m.filteredHistory = []string{}
 	m.showAll = false

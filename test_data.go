@@ -63,12 +63,12 @@ var TestCommands = []*Command{
 			},
 			{
 				ShortFlag:   "-f",
-				Description: "Copy directories recursively",
+				Description: "Force overwrite of existing files",
 				Type:        BoolArgument,
 			},
 			{
 				ShortFlag:   "-t",
-				Description: "Copy directories recursively",
+				Description: "Preserve modification times",
 				Type:        BoolArgument,
 			},
 		},
