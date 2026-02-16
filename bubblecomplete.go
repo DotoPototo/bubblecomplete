@@ -276,10 +276,21 @@ func (m Model) keyDown() (Model, tea.Cmd) {
 }
 
 func (m Model) keyRight() (Model, tea.Cmd) {
+	// If a tab completion is currently selected, accept it.
+	// Completions and validation are recalculated by Update() since
+	// clearing completionHolder makes its guard condition true.
+	if m.completionIndex >= 0 {
+		m.completionHolder = ""
+		m.completionIndex = -1
+		m.showAll = false
+		return m, nil
+	}
+
 	if m.input.Value() == "" {
 		return m, nil
 	}
 
+	// Accept history inline suggestion
 	if len(m.input.MatchedSuggestions()) == 0 {
 		return m, nil
 	}
@@ -369,6 +380,11 @@ func (m Model) keyEnter() (Model, tea.Cmd) {
 		command = strings.TrimSpace(m.input.Value())
 	}
 
+	// Re-validate against the current input to avoid stale errors from
+	// before tab completion changed the value.
+	m.validationErr = m.validateInput()
+	validationErr := m.validationErr
+
 	if (len(m.History) == 0 || m.History[0] != command) && command != "" {
 		m.History = append([]string{command}, m.History...)
 	}
@@ -381,7 +397,7 @@ func (m Model) keyEnter() (Model, tea.Cmd) {
 	m.input.SetSuggestions(m.History)
 
 	return m, func() tea.Msg {
-		return SelectedCommandMsg{Command: command, Err: m.validationErr}
+		return SelectedCommandMsg{Command: command, Err: validationErr}
 	}
 }
 
