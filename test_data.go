@@ -80,6 +80,20 @@ var TestCommands = []*Command{
 			{
 				Command:     "status",
 				Description: "Show the working tree status",
+				Flags: []*Flag{
+					{
+						ShortFlag:   "-s",
+						LongFlag:    "--short",
+						Description: "Give output in short format",
+						Type:        BoolArgument,
+					},
+					{
+						ShortFlag:   "-b",
+						LongFlag:    "--branch",
+						Description: "Show branch and tracking info",
+						Type:        BoolArgument,
+					},
+				},
 			},
 			{
 				Command:     "stash",
@@ -88,10 +102,32 @@ var TestCommands = []*Command{
 					{
 						Command:     "pop",
 						Description: "Remove a single stashed state from the stash list and apply it on top of the current working tree state",
+						Flags: []*Flag{
+							{
+								LongFlag:    "--index",
+								Description: "Try to reinstate index changes as well",
+								Type:        BoolArgument,
+							},
+						},
 					},
 					{
 						Command:     "apply",
 						Description: "Like pop, but do not remove the state from the stash list",
+						Flags: []*Flag{
+							{
+								LongFlag:    "--index",
+								Description: "Try to reinstate index changes as well",
+								Type:        BoolArgument,
+							},
+						},
+					},
+					{
+						Command:     "drop",
+						Description: "Remove a single stashed state from the stash list",
+					},
+					{
+						Command:     "list",
+						Description: "List the stash entries",
 					},
 				},
 			},
@@ -135,34 +171,259 @@ var TestCommands = []*Command{
 						Required:    false,
 					},
 				},
+				Flags: []*Flag{
+					{
+						ShortFlag:   "-f",
+						LongFlag:    "--force",
+						Description: "Force push even if remote has diverged",
+						Type:        BoolArgument,
+					},
+					{
+						ShortFlag:   "-u",
+						LongFlag:    "--set-upstream",
+						Description: "Set upstream tracking reference",
+						Type:        BoolArgument,
+					},
+					{
+						LongFlag:    "--tags",
+						Description: "Push all tags",
+						Type:        BoolArgument,
+					},
+				},
 			},
 			{
 				Command:     "pull",
 				Description: "Fetch from and integrate with another repository or a local branch",
+				PositionalArguments: []*PositionalArgument{
+					{
+						Name:        "remote",
+						Description: "Remote to pull from",
+						Type:        StringArgument,
+						Required:    false,
+					},
+					{
+						Name:        "branch",
+						Description: "Branch to pull",
+						Type:        StringArgument,
+						Required:    false,
+					},
+				},
+				Flags: []*Flag{
+					{
+						LongFlag:    "--rebase",
+						Description: "Rebase current branch on top of upstream",
+						Type:        BoolArgument,
+					},
+					{
+						LongFlag:    "--no-rebase",
+						Description: "Merge instead of rebasing",
+						Type:        BoolArgument,
+					},
+				},
 			},
 			{
 				Command:     "clone",
 				Description: "Clone a repository into a new directory",
+				PositionalArguments: []*PositionalArgument{
+					{
+						Name:        "repository",
+						Description: "Repository URL to clone",
+						Type:        StringArgument,
+						Required:    true,
+					},
+					{
+						Name:        "directory",
+						Description: "Directory to clone into",
+						Type:        StringArgument,
+						Required:    false,
+					},
+				},
+				Flags: []*Flag{
+					{
+						LongFlag:    "--depth",
+						Description: "Create a shallow clone with history truncated",
+						Type:        IntArgument,
+					},
+					{
+						LongFlag:    "--bare",
+						Description: "Make a bare Git repository",
+						Type:        BoolArgument,
+					},
+					{
+						ShortFlag:   "-b",
+						LongFlag:    "--branch",
+						Description: "Point HEAD at a specific branch",
+						Type:        StringArgument,
+					},
+				},
 			},
 			{
 				Command:     "checkout",
 				Description: "Switch branches or restore working tree files",
+				PositionalArguments: []*PositionalArgument{
+					{
+						Name:        "branch",
+						Description: "Branch or commit to check out",
+						Type:        StringArgument,
+						Required:    false,
+					},
+				},
+				Flags: []*Flag{
+					{
+						ShortFlag:   "-b",
+						Description: "Create and checkout a new branch",
+						Type:        StringArgument,
+					},
+					{
+						LongFlag:    "--track",
+						Description: "Set up tracking for the new branch",
+						Type:        BoolArgument,
+					},
+					{
+						LongFlag:    "--detach",
+						Description: "Detach HEAD at the named commit",
+						Type:        BoolArgument,
+					},
+				},
 			},
 			{
 				Command:     "branch",
 				Description: "List, create, or delete branches",
+				PositionalArguments: []*PositionalArgument{
+					{
+						Name:        "name",
+						Description: "Branch name to create or filter",
+						Type:        StringArgument,
+						Required:    false,
+					},
+				},
+				Flags: []*Flag{
+					{
+						ShortFlag:   "-d",
+						LongFlag:    "--delete",
+						Description: "Delete a branch",
+						Type:        BoolArgument,
+					},
+					{
+						ShortFlag:   "-D",
+						Description: "Force delete a branch",
+						Type:        BoolArgument,
+					},
+					{
+						ShortFlag:   "-a",
+						LongFlag:    "--all",
+						Description: "List both local and remote branches",
+						Type:        BoolArgument,
+					},
+					{
+						ShortFlag:   "-r",
+						LongFlag:    "--remotes",
+						Description: "List remote-tracking branches",
+						Type:        BoolArgument,
+					},
+				},
 			},
 			{
 				Command:     "merge",
 				Description: "Join two or more development histories together",
+				PositionalArguments: []*PositionalArgument{
+					{
+						Name:        "branch",
+						Description: "Branch to merge into current branch",
+						Type:        StringArgument,
+						Required:    false,
+					},
+				},
+				Flags: []*Flag{
+					{
+						LongFlag:    "--no-ff",
+						Description: "Create a merge commit even for fast-forward",
+						Type:        BoolArgument,
+					},
+					{
+						LongFlag:    "--squash",
+						Description: "Squash commits into a single commit",
+						Type:        BoolArgument,
+					},
+					{
+						LongFlag:    "--abort",
+						Description: "Abort the current merge",
+						Type:        BoolArgument,
+					},
+				},
 			},
 			{
 				Command:     "rebase",
 				Description: "Reapply commits on top of another base tip",
+				PositionalArguments: []*PositionalArgument{
+					{
+						Name:        "upstream",
+						Description: "Upstream branch to rebase onto",
+						Type:        StringArgument,
+						Required:    false,
+					},
+				},
+				Flags: []*Flag{
+					{
+						ShortFlag:   "-i",
+						LongFlag:    "--interactive",
+						Description: "Make a list of commits to be rebased and let the user edit",
+						Type:        BoolArgument,
+					},
+					{
+						LongFlag:    "--onto",
+						Description: "Starting point to create new commits onto",
+						Type:        StringArgument,
+					},
+					{
+						LongFlag:    "--abort",
+						Description: "Abort the rebase operation",
+						Type:        BoolArgument,
+					},
+					{
+						LongFlag:    "--continue",
+						Description: "Continue the rebase after resolving conflicts",
+						Type:        BoolArgument,
+					},
+				},
 			},
 			{
 				Command:     "tag",
 				Description: "Create, list, delete or verify a tag object signed with GPG",
+				PositionalArguments: []*PositionalArgument{
+					{
+						Name:        "tagname",
+						Description: "Tag name to create",
+						Type:        StringArgument,
+						Required:    false,
+					},
+				},
+				Flags: []*Flag{
+					{
+						ShortFlag:   "-a",
+						LongFlag:    "--annotate",
+						Description: "Make an annotated tag",
+						Type:        BoolArgument,
+					},
+					{
+						ShortFlag:   "-d",
+						LongFlag:    "--delete",
+						Description: "Delete existing tags",
+						Type:        BoolArgument,
+					},
+					{
+						ShortFlag:   "-m",
+						LongFlag:    "--message",
+						Description: "Tag message",
+						Type:        StringArgument,
+					},
+					{
+						ShortFlag:   "-l",
+						LongFlag:    "--list",
+						Description: "List tags matching a pattern",
+						Type:        BoolArgument,
+					},
+				},
 			},
 		},
 		Flags: []*Flag{

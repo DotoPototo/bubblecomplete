@@ -1,0 +1,401 @@
+package bubblecomplete
+
+import (
+	"testing"
+
+	tea "github.com/charmbracelet/bubbletea"
+)
+
+// simulateTyping sends each character of text through the full Update cycle.
+func simulateTyping(t *testing.T, m Model, text string) Model {
+	t.Helper()
+	for _, r := range text {
+		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+		m, _ = m.Update(msg)
+	}
+	return m
+}
+
+// simulateKey sends a single special key through the full Update cycle.
+func simulateKey(t *testing.T, m Model, keyType tea.KeyType) Model {
+	t.Helper()
+	m, _ = m.Update(tea.KeyMsg{Type: keyType})
+	return m
+}
+
+// pressEnter sends an enter key through Update and extracts the SelectedCommandMsg.
+// tea.Batch returns a single cmd directly when only one non-nil cmd exists,
+// otherwise it wraps in BatchMsg, so we handle both cases.
+func pressEnter(t *testing.T, m Model) (Model, SelectedCommandMsg) {
+	t.Helper()
+	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	if cmd == nil {
+		t.Fatal("Update returned nil cmd for enter")
+	}
+
+	raw := cmd()
+
+	// Single command case (tea.Batch optimization)
+	if msg, ok := raw.(SelectedCommandMsg); ok {
+		return m, msg
+	}
+
+	// Batched commands case
+	if batch, ok := raw.(tea.BatchMsg); ok {
+		for _, c := range batch {
+			if c == nil {
+				continue
+			}
+			if msg, ok := c().(SelectedCommandMsg); ok {
+				return m, msg
+			}
+		}
+	}
+
+	t.Fatalf("SelectedCommandMsg not found in Update result (got %T)", raw)
+	return m, SelectedCommandMsg{}
+}
+
+func newTestModel(t *testing.T) Model {
+	t.Helper()
+	m, err := New(TestCommands, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return m
+}
+
+func TestTabCompletionThenEnter(t *testing.T) {
+	testCases := []struct {
+		name          string
+		typed         string
+		expectedValue string
+		expectErr     bool
+	}{
+		{
+			name:          "partial subcommand completes and validates",
+			typed:         "git stash a",
+			expectedValue: "git stash apply",
+		},
+		{
+			name:          "different partial subcommand",
+			typed:         "git stash p",
+			expectedValue: "git stash pop",
+		},
+		{
+			name:          "top-level partial command",
+			typed:         "ca",
+			expectedValue: "cat",
+			expectErr:     true, // "cat" without file arg is invalid
+		},
+		{
+			name:          "from trailing space",
+			typed:         "git stash ",
+			expectedValue: "git stash apply",
+		},
+		{
+			name:          "flag partial completion",
+			typed:         "git commit --am",
+			expectedValue: "git commit --amend",
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			m := newTestModel(t)
+			m = simulateTyping(t, m, tc.typed)
+			m = simulateKey(t, m, tea.KeyTab)
+
+			if m.input.Value() != tc.expectedValue {
+				t.Fatalf("Expected %q after tab, got %q", tc.expectedValue, m.input.Value())
+			}
+
+			_, msg := pressEnter(t, m)
+			if msg.Command != tc.expectedValue {
+				t.Errorf("Expected command %q, got %q", tc.expectedValue, msg.Command)
+			}
+			if tc.expectErr && msg.Err == nil {
+				t.Error("Expected validation error, got nil")
+			}
+			if !tc.expectErr && msg.Err != nil {
+				t.Errorf("Expected no validation error, got: %v", msg.Err)
+			}
+		})
+	}
+}
+
+func TestTabCompletionThenEnter_StaleValidationFixed(t *testing.T) {
+	// This is the exact scenario from the bug report:
+	// type "git stash a" (validation error), tab to "git stash apply", enter.
+	// Before the fix, the stale "unexpected argument: a" error persisted.
+	m := newTestModel(t)
+	m = simulateTyping(t, m, "git stash a")
+
+	if m.validationErr == nil {
+		t.Fatal("Expected validation error after typing 'git stash a'")
+	}
+
+	m = simulateKey(t, m, tea.KeyTab)
+
+	if m.input.Value() != "git stash apply" {
+		t.Fatalf("Expected 'git stash apply' after tab, got %q", m.input.Value())
+	}
+
+	_, msg := pressEnter(t, m)
+	if msg.Err != nil {
+		t.Errorf("Expected no validation error after tab-completing to valid command, got: %v", msg.Err)
+	}
+}
+
+func TestTabCycling_ReturnsToOriginal(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash ")
+	originalValue := m.input.Value()
+	numCompletions := len(m.completions)
+
+	if numCompletions == 0 {
+		t.Fatal("Expected completions for 'git stash '")
+	}
+
+	// Tab through all completions and back to original
+	for i := 0; i <= numCompletions; i++ {
+		m = simulateKey(t, m, tea.KeyTab)
+	}
+
+	if m.input.Value() != originalValue {
+		t.Errorf("Expected input to return to %q after full tab cycle, got %q", originalValue, m.input.Value())
+	}
+	if m.completionIndex != -1 {
+		t.Errorf("Expected completionIndex -1 after full cycle, got %d", m.completionIndex)
+	}
+}
+
+func TestShiftTabCycling_ReversesDirection(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash ")
+
+	m = simulateKey(t, m, tea.KeyTab)
+	firstValue := m.input.Value()
+
+	m = simulateKey(t, m, tea.KeyShiftTab)
+
+	if m.completionIndex != -1 {
+		t.Errorf("Expected completionIndex -1 after shift-tab from first, got %d", m.completionIndex)
+	}
+
+	m = simulateKey(t, m, tea.KeyTab)
+	if m.input.Value() != firstValue {
+		t.Errorf("Expected same first completion %q, got %q", firstValue, m.input.Value())
+	}
+}
+
+func TestMultipleTabsThenEnter(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git c")
+
+	if len(m.completions) < 2 {
+		t.Fatalf("Expected multiple completions for 'git c', got %d", len(m.completions))
+	}
+
+	m = simulateKey(t, m, tea.KeyTab)
+	firstCompletion := m.input.Value()
+
+	m = simulateKey(t, m, tea.KeyTab)
+	secondCompletion := m.input.Value()
+
+	if firstCompletion == secondCompletion {
+		t.Error("Expected different completions on successive tabs")
+	}
+
+	_, msg := pressEnter(t, m)
+	if msg.Command != secondCompletion {
+		t.Errorf("Expected command %q, got %q", secondCompletion, msg.Command)
+	}
+}
+
+func TestRightArrow_AcceptsTabCompletion(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash a")
+	m = simulateKey(t, m, tea.KeyTab)
+
+	if m.completionIndex < 0 {
+		t.Fatal("Expected completionIndex >= 0 after tab")
+	}
+	if m.completionHolder == "" {
+		t.Fatal("Expected completionHolder to be set after tab")
+	}
+
+	expectedValue := m.input.Value()
+
+	m = simulateKey(t, m, tea.KeyRight)
+
+	if m.completionIndex != -1 {
+		t.Errorf("Expected completionIndex -1 after right arrow accept, got %d", m.completionIndex)
+	}
+	if m.completionHolder != "" {
+		t.Errorf("Expected empty completionHolder after right arrow accept, got %q", m.completionHolder)
+	}
+	if m.input.Value() != expectedValue {
+		t.Errorf("Expected input to stay %q after right arrow, got %q", expectedValue, m.input.Value())
+	}
+}
+
+func TestCtrlE_RoutesToKeyRight(t *testing.T) {
+	// Verify ctrl+e is routed to the same handler as right arrow by checking
+	// that it clears the completion holder when a completion is selected.
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash a")
+	m = simulateKey(t, m, tea.KeyTab)
+
+	if m.completionHolder == "" {
+		t.Fatal("Expected completionHolder to be set after tab")
+	}
+
+	// ctrl+e should clear completionHolder (same as right arrow)
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
+
+	if m.completionHolder != "" {
+		t.Errorf("Expected empty completionHolder after ctrl+e, got %q", m.completionHolder)
+	}
+}
+
+func TestRightArrow_NoSelection_DoesNotChangeState(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash ")
+
+	originalIndex := m.completionIndex
+	m = simulateKey(t, m, tea.KeyRight)
+
+	if m.completionIndex != originalIndex {
+		t.Errorf("Expected completionIndex to stay %d, got %d", originalIndex, m.completionIndex)
+	}
+}
+
+func TestRightArrow_ThenEnter_ValidCommand(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash a")
+	m = simulateKey(t, m, tea.KeyTab)
+	m = simulateKey(t, m, tea.KeyRight)
+
+	_, msg := pressEnter(t, m)
+	if msg.Command != "git stash apply" {
+		t.Errorf("Expected 'git stash apply', got %q", msg.Command)
+	}
+	if msg.Err != nil {
+		t.Errorf("Expected no error, got: %v", msg.Err)
+	}
+}
+
+func TestEnter_DirectValidCommand(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash apply")
+
+	_, msg := pressEnter(t, m)
+	if msg.Command != "git stash apply" {
+		t.Errorf("Expected 'git stash apply', got %q", msg.Command)
+	}
+	if msg.Err != nil {
+		t.Errorf("Expected no error, got: %v", msg.Err)
+	}
+}
+
+func TestEnter_InvalidCommand_ReturnsError(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash xyz")
+
+	_, msg := pressEnter(t, m)
+	if msg.Err == nil {
+		t.Error("Expected validation error for 'git stash xyz'")
+	}
+}
+
+func TestEnter_PartialSubcommand_ReturnsError(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash a")
+
+	_, msg := pressEnter(t, m)
+	if msg.Err == nil {
+		t.Error("Expected validation error for partial 'git stash a' without tab completion")
+	}
+}
+
+func TestBackspace_ResetsCompletionState(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash a")
+	m = simulateKey(t, m, tea.KeyTab)
+
+	if m.completionIndex < 0 {
+		t.Fatal("Expected active completion after tab")
+	}
+
+	m = simulateKey(t, m, tea.KeyBackspace)
+
+	if m.completionIndex != -1 {
+		t.Errorf("Expected completionIndex -1 after backspace, got %d", m.completionIndex)
+	}
+	if m.completionHolder != "" {
+		t.Errorf("Expected empty completionHolder after backspace, got %q", m.completionHolder)
+	}
+}
+
+func TestTypingAfterTab_ResetsCompletionState(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git stash a")
+	m = simulateKey(t, m, tea.KeyTab)
+
+	if m.completionIndex < 0 {
+		t.Fatal("Expected active completion after tab")
+	}
+
+	m = simulateTyping(t, m, " ")
+
+	if m.completionIndex != -1 {
+		t.Errorf("Expected completionIndex -1 after typing, got %d", m.completionIndex)
+	}
+	if m.completionHolder != "" {
+		t.Errorf("Expected empty completionHolder after typing, got %q", m.completionHolder)
+	}
+}
+
+func TestEnter_AddsToHistory(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git status")
+	m, _ = pressEnter(t, m)
+
+	if len(m.History) == 0 {
+		t.Fatal("Expected history to have an entry")
+	}
+	if m.History[0] != "git status" {
+		t.Errorf("Expected first history entry 'git status', got %q", m.History[0])
+	}
+}
+
+func TestEnter_ResetsModelState(t *testing.T) {
+	m := newTestModel(t)
+
+	m = simulateTyping(t, m, "git status")
+	m, _ = pressEnter(t, m)
+
+	if m.input.Value() != "" {
+		t.Errorf("Expected empty input after enter, got %q", m.input.Value())
+	}
+	if m.completionIndex != -1 {
+		t.Errorf("Expected completionIndex -1 after enter, got %d", m.completionIndex)
+	}
+	if len(m.completions) != 0 {
+		t.Errorf("Expected no completions after enter, got %d", len(m.completions))
+	}
+}
