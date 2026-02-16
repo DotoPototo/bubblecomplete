@@ -104,7 +104,7 @@ var commands = []*bubblecomplete.Command{
 | ----------- | ---------------------------------------------------------------------------------- | ----------------------------- |
 | ShortFlag   | The short flag identifier i.e. `-v`                                                | `string`                      |
 | LongFlag    | The long flag identifier i.e. `--verbose`                                          | `string`                      |
-| PsFlag      | PowerShell style flag i.e. `-verbose` - not compatable with ShortFlag and LongFlag | `string`                      |
+| PsFlag      | PowerShell style flag i.e. `-verbose` - not compatible with ShortFlag and LongFlag | `string`                      |
 | Description | A description of the flag                                                          | `string`                      |
 | Type        | The type of argument the flag expects                                              | `bubblecomplete.argumentType` |
 | Persistent  | A persistent flag is available to all subcommands of the command                   | `bool`                        |
@@ -129,12 +129,15 @@ type model struct {
 }
 
 func createModel() tea.Model {
-	bc := bubblecomplete.New(commands, 100)
-  bc.HistoryLimit = 50
+	bc, err := bubblecomplete.New(commands, 100)
+	if err != nil {
+		panic(err)
+	}
+	bc.HistoryLimit = 50
 
-  m := model{
-    bubblecomplete: ac,
-  }
+	m := model{
+		bubblecomplete: bc,
+	}
 
 	return m
 }
@@ -146,20 +149,44 @@ func (m model) View() string {
 
 ## Options
 
+#### General
+
 | Option              | Description                                                                              | Default         |
 | ------------------- | ---------------------------------------------------------------------------------------- | --------------- |
 | Autotrim            | Trim extra whitespace from the ends of the input                                         | `true`          |
-| CompletionsAbove    | Show the completion list above the input instead of below                                | `false`         |
 | CompletionsOffset   | The left margin offset of the completion list                                            | `0`             |
 | CompletionsPosition | The position of the completion list relative to the input                                | `PositionBelow` |
 | CompletionRows      | The number of rows to show in the completion list before scrolling                       | `5`             |
-| HistoryFilePath     | The path to a `.json` file to store the command history for persistance between sessions | -               |
+| HistoryFilePath     | The path to a `.json` file to store the command history for persistence between sessions | -               |
 | HistoryLimit        | The maximum number of history entries to store and save                                  | `100`           |
 | IndentCompletions   | Indent the completion list to match the current input length                             | `true`          |
-| InvalidCommandStyle | Lipgloss style for invalid user input                                                    | (white/black)   |
-| ShowBorderScroll    | Show different border colors around the completion list to indicate scrolling            | `true`          |
-| ShowScrollbar       | Show a horizontal scrollbar to indicate scrolling                                        | `false`         |
-| ValidCommandStyle   | Lipgloss style for valid user input                                                      | (green)         |
+| ShowBorderScroll    | Show different border colors around the completion list to indicate scrolling            | `false`         |
+| ShowScrollbar       | Show a vertical scrollbar to indicate scrolling                                          | `false`         |
+
+#### Icons
+
+| Option       | Description                        | Default |
+| ------------ | ---------------------------------- | ------- |
+| ShowIcons    | Show type indicator icons          | `false` |
+| CommandIcon  | Icon for command completions       | `›`     |
+| ArgumentIcon | Icon for argument completions      | `◆`     |
+| FlagIcon     | Icon for flag completions          | `◇`     |
+| IconStyle    | Lipgloss style for type icons      | (pink)  |
+
+#### Styles
+
+| Option                 | Description                                            | Default           |
+| ---------------------- | ------------------------------------------------------ | ----------------- |
+| ValidCommandStyle      | Lipgloss style for valid user input                    | (green)           |
+| InvalidCommandStyle    | Lipgloss style for invalid user input                  | (muted text)      |
+| MatchHighlightStyle    | Lipgloss style for the matched prefix in completions   | (bold pink)       |
+| SelectedRowStyle       | Lipgloss style for the selected completion row         | (bold, highlight) |
+| RowStyle               | Lipgloss style for odd completion rows                 | (subtle bg)       |
+| AltRowStyle            | Lipgloss style for even completion rows                | (alt subtle bg)   |
+| CompletionsBorderStyle | Lipgloss style for the completions border              | (rounded border)  |
+| DescriptionStyle       | Lipgloss style for completion descriptions             | (muted)           |
+| ScrollbarThumbStyle    | Lipgloss style for the scrollbar thumb                 | (pink)            |
+| ScrollbarTrackStyle    | Lipgloss style for the scrollbar track                 | (border color)    |
 
 ## Roadmap
 
@@ -172,9 +199,9 @@ func (m model) View() string {
   - [ ] Red if invalid path
 - [ ] Option to have flags disable other flags if they're mutually exclusive
 - [ ] Improved documentation comments for public functions and structs
-- [ ] Wider range of tests for more critical functions, for improved maintainability
+- [x] Wider range of tests for more critical functions, for improved maintainability
 - [ ] Option to not show the descriptions of the commands, flags etc
-- [ ] More exposed color options for the completion list, scrolling etc
+- [x] More exposed color options for the completion list, scrolling etc
 
 ## FAQ
 

@@ -57,9 +57,9 @@
 
 Output ./.github/example.gif
 
-Set Shell "bash"
+Set Shell "zsh"
 Set FontSize 22
-Set Width 1200
+Set Width 1600
 Set Height 500
 Set WindowBar Colorful
 Set TypingSpeed 100ms
@@ -68,27 +68,38 @@ Hide
 Type "go run example/main.go"
 Enter
 Show
-Sleep 2s
-Type "git "
-Tab
-Sleep 300ms
-Tab
-Sleep 300ms
-Tab
-Sleep 300ms
-Tab
+Sleep 1s
+Type "git ch"
 Sleep 500ms
-Type ' -m "an example message"'
-Sleep 2s
+Tab
+Sleep 1s
+Type " -b beta"
+Sleep 1s
 Enter
+Sleep 1s
+
+Type "git pull --r"
 Sleep 500ms
-Type "git stash p"
+Tab
 Sleep 500ms
-Right
-Sleep 2s
+Type " origin main"
+Sleep 1s
 Enter
+Sleep 1s
+
+Type 'git commit -m "add branch setup for rebase workflow"'
+Sleep 1s
+Enter
+Sleep 1s
+
+Type "git stash l"
 Sleep 500ms
+Tab
+Sleep 1s
+Enter
+Sleep 1s
+
 Type "git unknown"
-Sleep 2s
+Sleep 1s
 Enter
 Sleep 1s
