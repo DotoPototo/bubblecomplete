@@ -103,22 +103,17 @@ func (m *Model) SetHistoryFilePath(path string) {
 
 	m.historyFilePath = cleanPath
 
+	// saveHistoryToFile creates the file via atomic rename, so we no longer
+	// pre-create with os.Create (which previously leaked its returned handle).
 	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
-		if _, err := os.Create(cleanPath); err != nil {
-			m.Err = err
-			return
-		}
-		err = m.saveHistoryToFile()
-		if err != nil {
+		if err := m.saveHistoryToFile(); err != nil {
 			m.Err = err
 			return
 		}
 	}
 
-	err := m.loadHistoryFromFile()
-	if err != nil {
+	if err := m.loadHistoryFromFile(); err != nil {
 		m.Err = err
-		return
 	}
 }
 
@@ -156,18 +151,36 @@ func (m *Model) CloseCompletions() {
 
 // MARK: Private Functions
 
+// saveHistoryToFile writes the in-memory history to the configured file
+// atomically: write to a temp file in the same directory then rename, so a
+// crash mid-write can never produce a corrupted history file. Returns nil
+// when no history file is configured.
 func (m *Model) saveHistoryToFile() error {
-	// For small history lengths, it's better to just write the entire history to the file every time
 	if m.historyFilePath == "" {
-		return errors.New("history file path not set")
+		return nil
 	}
 	data := historyFileJson{History: m.History}
 	jsonData, err := json.Marshal(data)
 	if err != nil {
-		m.Err = err
 		return err
 	}
-	return os.WriteFile(m.historyFilePath, jsonData, 0644)
+
+	dir := filepath.Dir(m.historyFilePath)
+	tmp, err := os.CreateTemp(dir, "history-*.json.tmp")
+	if err != nil {
+		return err
+	}
+	tmpPath := tmp.Name()
+	if _, err := tmp.Write(jsonData); err != nil {
+		tmp.Close()
+		os.Remove(tmpPath)
+		return err
+	}
+	if err := tmp.Close(); err != nil {
+		os.Remove(tmpPath)
+		return err
+	}
+	return os.Rename(tmpPath, m.historyFilePath)
 }
 
 func (m *Model) loadHistoryFromFile() error {
@@ -178,14 +191,25 @@ func (m *Model) loadHistoryFromFile() error {
 		}
 		return err
 	}
+	// Tolerate an empty file as empty history.
+	if len(data) == 0 {
+		m.History = nil
+		m.input.SetSuggestions(nil)
+		return nil
+	}
 
 	jsonData := historyFileJson{}
-	err = json.Unmarshal(data, &jsonData)
-	if err != nil {
+	if err := json.Unmarshal(data, &jsonData); err != nil {
 		return err
 	}
 
 	m.History = jsonData.History
+	if m.HistoryLimit > 0 && len(m.History) > m.HistoryLimit {
+		m.History = m.History[:m.HistoryLimit]
+	}
+	if m.HistoryLimit <= 0 {
+		m.History = nil
+	}
 	m.input.SetSuggestions(m.History)
 	return nil
 }
@@ -367,15 +391,17 @@ func (m Model) keyEnter() (Model, tea.Cmd) {
 	m.validationErr = m.validateInput()
 	validationErr := m.validationErr
 
-	if (len(m.History) == 0 || m.History[0] != command) && command != "" {
+	// HistoryLimit <= 0 disables history entirely.
+	if m.HistoryLimit > 0 && command != "" && (len(m.History) == 0 || m.History[0] != command) {
 		m.History = append([]string{command}, m.History...)
-	}
-
-	if len(m.History) > m.HistoryLimit {
-		m.History = m.History[1:]
+		if len(m.History) > m.HistoryLimit {
+			m.History = m.History[:m.HistoryLimit]
+		}
 	}
 	m = m.resetModel()
-	m.saveHistoryToFile()
+	if err := m.saveHistoryToFile(); err != nil {
+		m.Err = err
+	}
 	m.input.SetSuggestions(m.History)
 
 	return m, func() tea.Msg {

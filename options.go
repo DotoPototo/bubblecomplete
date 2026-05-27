@@ -4,8 +4,22 @@ package bubblecomplete
 type Option func(*Model)
 
 // WithHistoryLimit sets the maximum number of history entries to retain.
+// Values of zero or less disable history entirely. Safe to call in any order
+// relative to WithHistoryFilePath; already-loaded history is re-capped to the
+// new limit.
 func WithHistoryLimit(n int) Option {
-	return func(m *Model) { m.HistoryLimit = n }
+	return func(m *Model) {
+		m.HistoryLimit = n
+		if n <= 0 {
+			m.History = nil
+			m.input.SetSuggestions(nil)
+			return
+		}
+		if len(m.History) > n {
+			m.History = m.History[:n]
+			m.input.SetSuggestions(m.History)
+		}
+	}
 }
 
 // WithHistoryFilePath enables history persistence to the given JSON file.

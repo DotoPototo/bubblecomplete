@@ -36,8 +36,8 @@ func initialModel() tea.Model {
 		bubblecomplete.WithScrollbar(true),
 		bubblecomplete.WithIcons(true),
 		bubblecomplete.WithCompletionRows(7),
-		bubblecomplete.WithHistoryFilePath(historyFilePath),
 		bubblecomplete.WithHistoryLimit(50),
+		bubblecomplete.WithHistoryFilePath(historyFilePath),
 	)
 	if err != nil {
 		log.Fatal(err)
