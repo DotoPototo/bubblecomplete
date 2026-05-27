@@ -1,6 +1,7 @@
 package bubblecomplete
 
 import (
+	"errors"
 	"fmt"
 	"testing"
 
@@ -434,6 +435,73 @@ func TestEnter_AddsToHistory(t *testing.T) {
 	}
 	if m.History[0] != "git status" {
 		t.Errorf("Expected first history entry 'git status', got %q", m.History[0])
+	}
+}
+
+func TestResetModel_ClearsAllListedTransientFields(t *testing.T) {
+	// Directly populate every field the Part 3 §1 fix targets, then call
+	// resetModel and verify each one is cleared. This is a unit test of
+	// resetModel itself; it does not assert anything about fields not
+	// listed here.
+	m := newTestModel(t)
+
+	m.completionHolder = "git stash"
+	m.showAll = true
+	m.filteredHistory = []string{"git status", "git commit"}
+	m.lastInput = "git stash a"
+	m.validationErr = errors.New("stale validation error")
+	m.completions = []completion{m.Commands[0]}
+	m.completionIndex = 0
+	m.matchPrefix = "a"
+	m.historyIndex = 1
+
+	m = m.resetModel()
+
+	if m.completionHolder != "" {
+		t.Errorf("completionHolder not cleared: %q", m.completionHolder)
+	}
+	if m.showAll {
+		t.Error("showAll not cleared")
+	}
+	if m.filteredHistory != nil {
+		t.Errorf("filteredHistory not cleared: %v", m.filteredHistory)
+	}
+	if m.lastInput != "" {
+		t.Errorf("lastInput not cleared: %q", m.lastInput)
+	}
+	if m.validationErr != nil {
+		t.Errorf("validationErr not cleared: %v", m.validationErr)
+	}
+	if len(m.completions) != 0 {
+		t.Errorf("completions not cleared: %v", m.completions)
+	}
+	if m.completionIndex != -1 {
+		t.Errorf("completionIndex = %d, want -1", m.completionIndex)
+	}
+	if m.matchPrefix != "" {
+		t.Errorf("matchPrefix not cleared: %q", m.matchPrefix)
+	}
+	if m.historyIndex != -1 {
+		t.Errorf("historyIndex = %d, want -1", m.historyIndex)
+	}
+}
+
+func TestShowAll_TabEnterTabReopens(t *testing.T) {
+	// Tab on empty input opens "show all"; Enter submits; the next Tab on
+	// fresh empty input must reopen "show all" (the old bug: a stale
+	// showAll=true blocked the show-all branch on re-tab).
+	m := newTestModel(t)
+
+	m = simulateKey(t, m, tea.KeyTab)
+	if !m.showAll {
+		t.Fatal("setup: expected showAll true after first Tab on empty input")
+	}
+
+	m, _ = pressEnter(t, m)
+
+	m = simulateKey(t, m, tea.KeyTab)
+	if !m.showAll {
+		t.Error("second Tab on empty input did not reopen show-all completions")
 	}
 }
 

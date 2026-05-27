@@ -227,8 +227,12 @@ func (m Model) resetModel() Model {
 	m.input.SetValue("")
 	m.completions = []completion{}
 	m.completionIndex = -1
+	m.completionHolder = ""
+	m.showAll = false
 	m.matchPrefix = ""
 	m.historyIndex = -1
+	m.filteredHistory = nil
+	m.lastInput = ""
 	m.validationErr = nil
 	m.applyInputValidationStyle()
 	return m
