@@ -95,7 +95,7 @@ var commands = []*bubblecomplete.Command{
 | ----------- | -------------------------------- | ----------------------------- |
 | Name        | The argument name                | `string`                      |
 | Description | A description of the argument    | `string`                      |
-| Type        | The type of the argument         | `bubblecomplete.argumentType` |
+| Type        | The type of the argument         | `bubblecomplete.ArgumentType` |
 | Required    | Whether the argument is required | `bool`                        |
 
 #### Flags
@@ -106,7 +106,7 @@ var commands = []*bubblecomplete.Command{
 | LongFlag    | The long flag identifier i.e. `--verbose`                                          | `string`                      |
 | PsFlag      | PowerShell style flag i.e. `-verbose` - not compatible with ShortFlag and LongFlag | `string`                      |
 | Description | A description of the flag                                                          | `string`                      |
-| Type        | The type of argument the flag expects                                              | `bubblecomplete.argumentType` |
+| Type        | The type of argument the flag expects                                              | `bubblecomplete.ArgumentType` |
 | Persistent  | A persistent flag is available to all subcommands of the command                   | `bool`                        |
 
 #### Argument Types

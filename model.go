@@ -126,25 +126,26 @@ func (c Command) getAutocomplete() string {
 type Argument interface {
 	getName() string
 	getDescription() string
-	getType() argumentType
+	getType() ArgumentType
 }
 
-type argumentType string
+// ArgumentType classifies the kind of value a positional argument or flag accepts.
+type ArgumentType string
 
 const (
-	StringArgument  argumentType = "string"
-	IntArgument     argumentType = "int"
-	FloatArgument   argumentType = "float"
-	BoolArgument    argumentType = "bool"
-	FileArgument    argumentType = "file"
-	DirArgument     argumentType = "dir"
-	FileDirArgument argumentType = "filedir"
+	StringArgument  ArgumentType = "string"
+	IntArgument     ArgumentType = "int"
+	FloatArgument   ArgumentType = "float"
+	BoolArgument    ArgumentType = "bool"
+	FileArgument    ArgumentType = "file"
+	DirArgument     ArgumentType = "dir"
+	FileDirArgument ArgumentType = "filedir"
 )
 
 type PositionalArgument struct {
 	Name        string
 	Description string
-	Type        argumentType
+	Type        ArgumentType
 	Required    bool
 }
 
@@ -167,7 +168,7 @@ func (a PositionalArgument) getAutocomplete() string {
 	return ""
 }
 
-func (a PositionalArgument) getType() argumentType {
+func (a PositionalArgument) getType() ArgumentType {
 	return a.Type
 }
 
@@ -176,7 +177,7 @@ type Flag struct {
 	LongFlag    string
 	PsFlag      string
 	Description string
-	Type        argumentType
+	Type        ArgumentType
 	Persistent  bool
 }
 
@@ -210,7 +211,7 @@ func (a Flag) getAutocomplete() string {
 	return a.LongFlag
 }
 
-func (a Flag) getType() argumentType {
+func (a Flag) getType() ArgumentType {
 	return a.Type
 }
 
@@ -511,7 +512,7 @@ func containsWhitespace(s string) bool {
 	return false
 }
 
-func isValidArgumentType(t argumentType) bool {
+func isValidArgumentType(t ArgumentType) bool {
 	switch t {
 	case StringArgument, IntArgument, FloatArgument, BoolArgument, FileArgument, DirArgument, FileDirArgument:
 		return true
