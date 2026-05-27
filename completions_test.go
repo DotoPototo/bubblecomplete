@@ -132,6 +132,21 @@ func TestSplitPositionArgsAndFlags_NoDuplicateAppends(t *testing.T) {
 	}
 }
 
+func TestCompletionFlagValue_RecognizesNegativeNumbers(t *testing.T) {
+	// While typing "ps -intarg -1", completion must treat -1 as the value
+	// for the -intarg flag, not as a new flag. The fix in isEnteringFlagValue
+	// uses looksLikeFlagValue to allow negatives for numeric flag types.
+	completions, _ := getCompletions("ps -intarg -1", TestCommands)
+	if len(completions) != 1 {
+		t.Fatalf("expected 1 completion (the -intarg flag waiting for value), got %d: %v",
+			len(completions), completionNames(completions))
+	}
+	asFlag, ok := completions[0].(*Flag)
+	if !ok || asFlag.PsFlag != "-intarg" {
+		t.Errorf("expected -intarg flag completion, got %T %v", completions[0], completions[0])
+	}
+}
+
 func TestPersistentFlag_RecognizedInValueDetection(t *testing.T) {
 	// Build a parent with a persistent value-taking flag and a subcommand.
 	// The flag value parsers must treat the persistent flag as effective on

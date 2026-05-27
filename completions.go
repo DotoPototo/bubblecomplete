@@ -345,14 +345,17 @@ func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []str
 		lastFlag := flagArgParts[len(flagArgParts)-2]
 		lastValue := lastArg
 
-		if strings.HasPrefix(lastFlag, "-") && !strings.HasPrefix(lastValue, "-") && !inputContainsUnquotedTokenBeforeLast(input, lastValue) {
+		if strings.HasPrefix(lastFlag, "-") && !inputContainsUnquotedTokenBeforeLast(input, lastValue) {
 			flagValueToCompare := lastFlag
 			for _, flag := range allFlags {
 				// If the last flag is a short flag, only compare the last character
 				if flag.PsFlag == "" && !strings.HasPrefix(lastFlag, "--") && len(lastFlag) > 2 {
 					flagValueToCompare = "-" + lastFlag[len(lastFlag)-1:]
 				}
-				if containsFlag(flagValueToCompare, flag) && flag.Type != BoolArgument {
+				// looksLikeFlagValue lets numeric flags accept negative numbers
+				// (e.g., --depth -1) while still rejecting leading-dash tokens
+				// for non-numeric types.
+				if containsFlag(flagValueToCompare, flag) && flag.Type != BoolArgument && looksLikeFlagValue(flag, lastValue) {
 					return true, flag
 				}
 			}

@@ -136,7 +136,7 @@ func validateFlag(part string, parts []string, i *int, parentCmd *Command, globa
 	}
 
 	if arg.getType() != BoolArgument && argValue == "" {
-		if *i == len(parts)-1 || strings.HasPrefix(parts[*i+1], "-") {
+		if *i == len(parts)-1 || !looksLikeFlagValue(arg, parts[*i+1]) {
 			return errMissingFlagValue(argName)
 		}
 		argValue = parts[*i+1]
@@ -144,6 +144,26 @@ func validateFlag(part string, parts []string, i *int, parentCmd *Command, globa
 	}
 
 	return validateArgumentValue(arg, argValue)
+}
+
+// looksLikeFlagValue reports whether next can serve as a value for arg. Tokens
+// that don't start with "-" are always accepted. Tokens that do start with "-"
+// are accepted only when they parse as a number for IntArgument / FloatArgument
+// flags (e.g., --depth -1, --threshold -0.5). String values with a leading
+// dash must be quoted or supplied via --flag=value.
+func looksLikeFlagValue(arg Argument, next string) bool {
+	if !strings.HasPrefix(next, "-") {
+		return true
+	}
+	switch arg.getType() {
+	case IntArgument:
+		_, err := strconv.Atoi(next)
+		return err == nil
+	case FloatArgument:
+		_, err := strconv.ParseFloat(next, 64)
+		return err == nil
+	}
+	return false
 }
 
 func validateShortFlags(part string, parts []string, i *int, parentCmd *Command, globalFlags []*Flag) error {
@@ -169,7 +189,7 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 
 		if arg.getType() != BoolArgument {
 			if j == len(combinedFlags)-1 {
-				if *i == len(parts)-1 || strings.HasPrefix(parts[*i+1], "-") {
+				if *i == len(parts)-1 || !looksLikeFlagValue(arg, parts[*i+1]) {
 					return errMissingFlagValue(argName)
 				}
 				argValue = parts[*i+1]

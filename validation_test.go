@@ -330,6 +330,30 @@ func TestValidationError_KindInspection(t *testing.T) {
 	}
 }
 
+func TestValidationFlagValue_AcceptsNegativeNumbers(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		wantErr bool
+	}{
+		{"negative int value", "ps -intarg -1 ./README.md", false},
+		{"negative float value", "ps -floatarg -0.5 ./README.md", false},
+		{"non-numeric leading dash still rejected for int", "ps -intarg -foo ./README.md", true},
+		{"plain integer still works", "ps -intarg 42 ./README.md", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateCommandInput(c.input, TestCommands)
+			if c.wantErr && err == nil {
+				t.Errorf("expected error for %q", c.input)
+			}
+			if !c.wantErr && err != nil {
+				t.Errorf("expected no error for %q, got: %v", c.input, err)
+			}
+		})
+	}
+}
+
 func TestValidationError_MalformedFlagSurfaces(t *testing.T) {
 	cases := []struct {
 		name    string
