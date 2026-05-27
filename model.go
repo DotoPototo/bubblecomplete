@@ -64,6 +64,8 @@ type Model struct {
 	CompletionRows int
 	// Whether to show type indicator icons
 	ShowIcons bool
+	// Whether to render the description column next to each completion name
+	ShowDescriptions bool
 	// The icon for command completions
 	CommandIcon string
 	// The icon for argument completions
@@ -255,6 +257,7 @@ func New(commands []*Command, width int, opts ...Option) (Model, error) {
 		CompletionsPosition: PositionBelow,
 		CompletionRows:      5,
 		ShowIcons:           false,
+		ShowDescriptions:    true,
 		CommandIcon:         "\u203A",
 		ArgumentIcon:        "\u25C6",
 		FlagIcon:            "\u25C7",

@@ -88,8 +88,10 @@ func (m Model) completionBoxWidth(rows []completionRow) (titleWidth, lineWidth i
 		if w := lipgloss.Width(r.Name); w > maxTitle {
 			maxTitle = w
 		}
-		if w := lipgloss.Width(r.Description); w > maxDesc {
-			maxDesc = w
+		if m.ShowDescriptions {
+			if w := lipgloss.Width(r.Description); w > maxDesc {
+				maxDesc = w
+			}
 		}
 	}
 	titleWidth = maxTitle + titlePadding
@@ -188,19 +190,29 @@ func (m Model) renderCompletionRow(row completionRow, titleWidth, completionsWid
 		}
 	}
 
-	descText := truncateDescription(row.Description, completionsWidth-titleWidth)
-	if !selected {
-		descText = m.styles.Completion.Description.Render(descText)
-	}
-
 	nameWidth := lipgloss.Width(name)
-	rowText := lipgloss.JoinHorizontal(
-		lipgloss.Left,
-		" ",
-		name,
-		lg.Width(completionsWidth-nameWidth).PaddingLeft(titleWidth-nameWidth).Render(descText),
-		" ",
-	)
+
+	var rowText string
+	if m.ShowDescriptions {
+		descText := truncateDescription(row.Description, completionsWidth-titleWidth)
+		if !selected {
+			descText = m.styles.Completion.Description.Render(descText)
+		}
+		rowText = lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			" ",
+			name,
+			lg.Width(completionsWidth-nameWidth).PaddingLeft(titleWidth-nameWidth).Render(descText),
+			" ",
+		)
+	} else {
+		rowText = lipgloss.JoinHorizontal(
+			lipgloss.Left,
+			" ",
+			lg.Width(titleWidth).Render(name),
+			" ",
+		)
+	}
 
 	switch {
 	case selected:

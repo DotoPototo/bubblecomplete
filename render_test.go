@@ -204,6 +204,51 @@ func TestTruncateDescription_WideChars(t *testing.T) {
 	}
 }
 
+func TestCompletionBoxWidth_DescriptionsHidden(t *testing.T) {
+	rows := []completionRow{
+		{Name: "git", Description: "a longer description"},
+		{Name: "commit", Description: "another longer description"},
+	}
+
+	m, err := New(TestCommands, 100, WithDescriptions(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	titleWidth, lineWidth := m.completionBoxWidth(rows)
+	wantTitle := len("commit") + 3
+	if titleWidth != wantTitle {
+		t.Errorf("titleWidth = %d, want %d", titleWidth, wantTitle)
+	}
+	if lineWidth != wantTitle {
+		t.Errorf("lineWidth with descriptions off = %d, want %d (descriptions should not contribute)", lineWidth, wantTitle)
+	}
+}
+
+func TestRender_DescriptionsHidden(t *testing.T) {
+	m, err := New(TestCommands, 100, WithDescriptions(false))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.input.SetValue("git ")
+	m.completions, m.matchPrefix = m.getCompletions()
+	if len(m.completions) == 0 {
+		t.Fatal("expected completions for 'git '")
+	}
+
+	out := m.Render()
+
+	// With descriptions hidden, no completion's description text should appear.
+	for _, c := range m.completions {
+		desc := c.getDescription()
+		if desc == "" {
+			continue
+		}
+		if strings.Contains(out, desc) {
+			t.Errorf("Render() unexpectedly contains description %q while ShowDescriptions=false", desc)
+		}
+	}
+}
+
 func TestCompletionBoxWidth(t *testing.T) {
 	rows := []completionRow{
 		{Name: "short", Description: "tiny"},

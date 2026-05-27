@@ -68,6 +68,11 @@ func WithIcons(b bool) Option {
 	return func(m *Model) { m.ShowIcons = b }
 }
 
+// WithDescriptions toggles the description column next to each completion name.
+func WithDescriptions(b bool) Option {
+	return func(m *Model) { m.ShowDescriptions = b }
+}
+
 // WithKeyMap replaces the default key bindings.
 func WithKeyMap(k KeyMap) Option {
 	return func(m *Model) { m.SetKeyMap(k) }

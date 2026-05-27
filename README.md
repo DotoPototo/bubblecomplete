@@ -160,6 +160,10 @@ func (m model) View() tea.View {
 
 ## Options
 
+Each option below is a public field on `Model` and also has a `With*`
+construction option (for example `WithCompletionRows(5)` or
+`WithDescriptions(false)`). Use whichever style fits.
+
 #### General
 
 | Option              | Description                                                                              | Default         |
@@ -173,6 +177,7 @@ func (m model) View() tea.View {
 | IndentCompletions   | Indent the completion list to match the current input length                             | `true`          |
 | ShowBorderScroll    | Show different border colors around the completion list to indicate scrolling            | `false`         |
 | ShowScrollbar       | Show a vertical scrollbar to indicate scrolling                                          | `false`         |
+| ShowDescriptions    | Render the description column next to each completion name                               | `true`          |
 
 #### Icons
 
@@ -241,7 +246,7 @@ bc.SetKeyMap(k)
 - [ ] Option to have flags disable other flags if they're mutually exclusive
 - [ ] Improved documentation comments for public functions and structs
 - [x] Wider range of tests for more critical functions, for improved maintainability
-- [ ] Option to not show the descriptions of the commands, flags etc
+- [x] Option to not show the descriptions of the commands, flags etc
 - [x] More exposed color options for the completion list, scrolling etc
 
 ## FAQ
