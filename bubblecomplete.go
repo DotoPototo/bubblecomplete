@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 )
@@ -31,19 +32,21 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	// Handle key presses
 	switch msg := msg.(type) {
 	case tea.KeyPressMsg:
-		switch msg.String() {
-		case "tab", "ctrl+n", "shift+tab", "ctrl+p":
-			m, cmd = m.keyTab(msg.String())
-		case "backspace":
-			m, cmd = m.keyBackspace()
-		case "enter":
+		switch {
+		case key.Matches(msg, m.keymap.NextCompletion):
+			m, cmd = m.keyTab(true)
+		case key.Matches(msg, m.keymap.PrevCompletion):
+			m, cmd = m.keyTab(false)
+		case key.Matches(msg, m.keymap.Submit):
 			m, cmd = m.keyEnter()
-		case "up":
+		case key.Matches(msg, m.keymap.HistoryPrev):
 			m, cmd = m.keyUp()
-		case "down":
+		case key.Matches(msg, m.keymap.HistoryNext):
 			m, cmd = m.keyDown()
-		case "right", "ctrl+e":
+		case key.Matches(msg, m.keymap.AcceptCompletion):
 			m, cmd = m.keyRight()
+		case msg.String() == "backspace":
+			m, cmd = m.keyBackspace()
 		default:
 			m, cmd = m.keyDefault(msg)
 		}
@@ -302,7 +305,7 @@ func (m Model) keyRight() (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) keyTab(input string) (Model, tea.Cmd) {
+func (m Model) keyTab(forward bool) (Model, tea.Cmd) {
 	trimmedInput := strings.TrimSpace(m.input.Value())
 
 	// If the input is empty, show all completions
@@ -325,15 +328,13 @@ func (m Model) keyTab(input string) (Model, tea.Cmd) {
 	}
 
 	// Cycle and update the completion index
-	if input == "tab" || input == "ctrl+n" {
-		// Down
+	if forward {
 		if m.completionIndex < len(m.completions)-1 {
 			m.completionIndex++
 		} else {
 			m.completionIndex = -1
 		}
 	} else {
-		// Up
 		if m.completionIndex > -1 {
 			m.completionIndex--
 		} else {

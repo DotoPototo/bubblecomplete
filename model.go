@@ -72,6 +72,7 @@ type Model struct {
 	FlagIcon string
 
 	styles Styles
+	keymap KeyMap
 }
 
 type Completion interface {
@@ -253,6 +254,7 @@ func New(commands []*Command, width int) (Model, error) {
 		ArgumentIcon:        "\u25C6",
 		FlagIcon:            "\u25C7",
 		styles:              DefaultStyles(),
+		keymap:              DefaultKeyMap(),
 	}, nil
 }
 
@@ -264,6 +266,16 @@ func (m Model) Styles() Styles {
 // SetStyles replaces the component's styles.
 func (m *Model) SetStyles(s Styles) {
 	m.styles = s
+}
+
+// KeyMap returns the current key bindings. Modify the returned value and pass it to SetKeyMap to apply changes.
+func (m Model) KeyMap() KeyMap {
+	return m.keymap
+}
+
+// SetKeyMap replaces the component's key bindings.
+func (m *Model) SetKeyMap(k KeyMap) {
+	m.keymap = k
 }
 
 // SetWidth sets the width of the model

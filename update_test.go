@@ -3,6 +3,7 @@ package bubblecomplete
 import (
 	"testing"
 
+	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
 )
 
@@ -29,37 +30,38 @@ func simulateKeyMod(t *testing.T, m Model, code rune, mod tea.KeyMod) Model {
 	return m
 }
 
-// pressEnter sends an enter key through Update and extracts the SelectedCommandMsg.
+// extractSelectedCommand walks the Update result for a SelectedCommandMsg.
 // tea.Batch returns a single cmd directly when only one non-nil cmd exists,
 // otherwise it wraps in BatchMsg, so we handle both cases.
-func pressEnter(t *testing.T, m Model) (Model, SelectedCommandMsg) {
-	t.Helper()
-	m, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+func extractSelectedCommand(cmd tea.Cmd) (SelectedCommandMsg, bool) {
 	if cmd == nil {
-		t.Fatal("Update returned nil cmd for enter")
+		return SelectedCommandMsg{}, false
 	}
-
 	raw := cmd()
-
-	// Single command case (tea.Batch optimization)
 	if msg, ok := raw.(SelectedCommandMsg); ok {
-		return m, msg
+		return msg, true
 	}
-
-	// Batched commands case
 	if batch, ok := raw.(tea.BatchMsg); ok {
 		for _, c := range batch {
 			if c == nil {
 				continue
 			}
 			if msg, ok := c().(SelectedCommandMsg); ok {
-				return m, msg
+				return msg, true
 			}
 		}
 	}
+	return SelectedCommandMsg{}, false
+}
 
-	t.Fatalf("SelectedCommandMsg not found in Update result (got %T)", raw)
-	return m, SelectedCommandMsg{}
+func pressEnter(t *testing.T, m Model) (Model, SelectedCommandMsg) {
+	t.Helper()
+	m, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	msg, ok := extractSelectedCommand(cmd)
+	if !ok {
+		t.Fatal("SelectedCommandMsg not found for enter")
+	}
+	return m, msg
 }
 
 func newTestModel(t *testing.T) Model {
@@ -403,5 +405,32 @@ func TestEnter_ResetsModelState(t *testing.T) {
 	}
 	if len(m.completions) != 0 {
 		t.Errorf("Expected no completions after enter, got %d", len(m.completions))
+	}
+}
+
+func TestSetKeyMap_RebindSubmit(t *testing.T) {
+	m := newTestModel(t)
+
+	k := m.KeyMap()
+	k.Submit = key.NewBinding(key.WithKeys("ctrl+s"))
+	m.SetKeyMap(k)
+
+	m = simulateTyping(t, m, "git status")
+
+	m, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if _, ok := extractSelectedCommand(cmd); ok {
+		t.Error("Enter should not submit after Submit rebind")
+	}
+	if m.input.Value() != "git status" {
+		t.Errorf("Expected input preserved after non-binding enter, got %q", m.input.Value())
+	}
+
+	m, cmd = m.Update(tea.KeyPressMsg{Code: 's', Mod: tea.ModCtrl})
+	msg, ok := extractSelectedCommand(cmd)
+	if !ok {
+		t.Fatal("Expected ctrl+s to submit after rebind")
+	}
+	if msg.Command != "git status" {
+		t.Errorf("Expected 'git status', got %q", msg.Command)
 	}
 }

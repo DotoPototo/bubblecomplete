@@ -206,6 +206,27 @@ bc.SetStyles(s)
 | Scrollbar.Thumb          | Style for the scrollbar thumb                        | (pink)            |
 | Scrollbar.Track          | Style for the scrollbar track                        | (border color)    |
 
+#### Key Bindings
+
+Bindings are exposed via `KeyMap()` / `SetKeyMap()`:
+
+```go
+import "charm.land/bubbles/v2/key"
+
+k := bc.KeyMap()
+k.Submit = key.NewBinding(key.WithKeys("enter", "ctrl+s"))
+bc.SetKeyMap(k)
+```
+
+| Field            | Description                                | Default              |
+| ---------------- | ------------------------------------------ | -------------------- |
+| NextCompletion   | Cycle forward through completions          | `tab`, `ctrl+n`      |
+| PrevCompletion   | Cycle backward through completions         | `shift+tab`, `ctrl+p`|
+| AcceptCompletion | Accept the selected or inline completion   | `right`, `ctrl+e`    |
+| Submit           | Submit the current input                   | `enter`              |
+| HistoryPrev      | Walk back through command history          | `up`                 |
+| HistoryNext      | Walk forward through command history       | `down`               |
+
 ## Roadmap
 
 - [x] Update to bubbletea v2
