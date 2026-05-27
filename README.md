@@ -118,7 +118,7 @@ var commands = []*bubblecomplete.Command{
 | StringArgument  | A string argument that can be set to any value                                     |
 | IntArgument     | An integer argument that can be set to any integer value                           |
 | FloatArgument   | A float argument that can be set to any float value                                |
-| BoolArgument    | A boolean argument that can be set to `true` or `false` (or left empty for `true`) |
+| BoolArgument    | A presence flag — the flag's presence in the input is true, its absence is false. No value follows the flag. |
 | FileArgument    | A file argument that can be set to a valid file path                               |
 | DirArgument     | A directory argument that can be set to a valid directory path                     |
 | FileDirArgument | A file or directory argument that can be set to a valid file or directory path     |
@@ -162,9 +162,12 @@ func (m model) View() tea.View {
 
 ## Options
 
-Each option below is a public field on `Model` and also has a `With*`
-construction option (for example `WithCompletionRows(5)` or
-`WithDescriptions(false)`). Use whichever style fits.
+Every option below has a matching `With*` construction option (for example
+`WithCompletionRows(5)` or `WithDescriptions(false)`). Most are also public
+fields on `Model` so they can be tweaked at runtime — exceptions are noted in
+their row. `Styles` and `KeyMap` are private; configure them via the dedicated
+`Styles()` / `SetStyles()` and `KeyMap()` / `SetKeyMap()` accessors documented
+below.
 
 #### General
 
@@ -174,7 +177,7 @@ construction option (for example `WithCompletionRows(5)` or
 | CompletionsOffset   | The left margin offset of the completion list                                            | `0`             |
 | CompletionsPosition | The position of the completion list relative to the input                                | `PositionBelow` |
 | CompletionRows      | The number of rows to show in the completion list before scrolling                       | `5`             |
-| HistoryFilePath     | The path to a `.json` file to store the command history for persistence between sessions | -               |
+| HistoryFilePath     | The path to a `.json` file to store the command history for persistence between sessions (configure via `WithHistoryFilePath` / `SetHistoryFilePath` — no public field) | -               |
 | HistoryLimit        | The maximum number of history entries to store and save                                  | `100`           |
 | IndentCompletions   | Indent the completion list to match the current input length                             | `true`          |
 | ShowBorderScroll    | Show different border colors around the completion list to indicate scrolling            | `false`         |

@@ -29,7 +29,7 @@ func initialModel() tea.Model {
 	historyFilePath := home + "/.bubblecomplete_history.json"
 
 	bc, err := bubblecomplete.New(
-		bubblecomplete.TestCommands,
+		demoCommands,
 		100,
 		bubblecomplete.WithCompletionsPosition(bubblecomplete.PositionBelow),
 		bubblecomplete.WithBorderScroll(true),
