@@ -129,11 +129,13 @@ type model struct {
 }
 
 func createModel() tea.Model {
-	bc, err := bubblecomplete.New(commands, 100)
+	bc, err := bubblecomplete.New(commands, 100,
+		bubblecomplete.WithHistoryLimit(50),
+		bubblecomplete.WithIcons(true),
+	)
 	if err != nil {
 		panic(err)
 	}
-	bc.HistoryLimit = 50
 
 	m := model{
 		bubblecomplete: bc,

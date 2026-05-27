@@ -25,23 +25,24 @@ type model struct {
 }
 
 func initialModel() tea.Model {
-	bc, err := bubblecomplete.New(bubblecomplete.TestCommands, 100)
+	home, _ := os.UserHomeDir()
+	historyFilePath := home + "/.bubblecomplete_history.json"
 
+	bc, err := bubblecomplete.New(
+		bubblecomplete.TestCommands,
+		100,
+		bubblecomplete.WithCompletionsPosition(bubblecomplete.PositionBelow),
+		bubblecomplete.WithBorderScroll(true),
+		bubblecomplete.WithScrollbar(true),
+		bubblecomplete.WithIcons(true),
+		bubblecomplete.WithCompletionRows(7),
+		bubblecomplete.WithHistoryFilePath(historyFilePath),
+		bubblecomplete.WithHistoryLimit(50),
+	)
 	if err != nil {
 		log.Fatal(err)
 		os.Exit(1)
 	}
-
-	bc.CompletionsPosition = bubblecomplete.PositionBelow
-	bc.ShowBorderScroll = true
-	bc.ShowScrollbar = true
-	bc.ShowIcons = true
-	bc.CompletionRows = 7
-	home, _ := os.UserHomeDir()
-	historyFilePath := home + "/.bubblecomplete_history.json"
-	bc.SetHistoryFilePath(historyFilePath)
-
-	bc.HistoryLimit = 50
 
 	m := model{
 		bubblecomplete: bc,

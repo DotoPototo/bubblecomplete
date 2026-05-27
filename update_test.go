@@ -452,6 +452,42 @@ func TestValueAndValidationError(t *testing.T) {
 	}
 }
 
+func TestNew_AppliesOptions(t *testing.T) {
+	customKM := DefaultKeyMap()
+	customKM.Submit = key.NewBinding(key.WithKeys("ctrl+s"))
+
+	m, err := New(TestCommands, 80,
+		WithHistoryLimit(7),
+		WithCompletionRows(3),
+		WithIcons(true),
+		WithCompletionsPosition(PositionAbove),
+		WithKeyMap(customKM),
+		WithPlaceholder("type stuff"),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if m.HistoryLimit != 7 {
+		t.Errorf("HistoryLimit = %d, want 7", m.HistoryLimit)
+	}
+	if m.CompletionRows != 3 {
+		t.Errorf("CompletionRows = %d, want 3", m.CompletionRows)
+	}
+	if !m.ShowIcons {
+		t.Error("ShowIcons = false, want true")
+	}
+	if m.CompletionsPosition != PositionAbove {
+		t.Errorf("CompletionsPosition = %v, want PositionAbove", m.CompletionsPosition)
+	}
+	if got := m.KeyMap().Submit.Keys(); len(got) != 1 || got[0] != "ctrl+s" {
+		t.Errorf("Submit keys = %v, want [ctrl+s]", got)
+	}
+	if m.input.Placeholder != "type stuff" {
+		t.Errorf("Placeholder = %q, want %q", m.input.Placeholder, "type stuff")
+	}
+}
+
 func TestSetKeyMap_RebindSubmit(t *testing.T) {
 	m := newTestModel(t)
 

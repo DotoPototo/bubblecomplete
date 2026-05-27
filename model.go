@@ -212,10 +212,11 @@ func (a Flag) getType() argumentType {
 
 // MARK: Public Functions
 
-// New creates a new model with the given commands
+// New creates a new model with the given commands.
 //
-// Returns an error if any of the commands are invalid
-func New(commands []*Command, width int) (Model, error) {
+// Apply Option values to configure construction-time settings such as history,
+// styles, key bindings, and layout. Returns an error if any command is invalid.
+func New(commands []*Command, width int, opts ...Option) (Model, error) {
 	for _, cmd := range commands {
 		if err := cmd.Validate(); err != nil {
 			return Model{}, err
@@ -235,7 +236,7 @@ func New(commands []*Command, width int) (Model, error) {
 	inputKeyMap.PrevSuggestion = key.NewBinding()
 	input.KeyMap = inputKeyMap
 
-	return Model{
+	m := Model{
 		input:               input,
 		Commands:            commands,
 		width:               width,
@@ -255,7 +256,11 @@ func New(commands []*Command, width int) (Model, error) {
 		FlagIcon:            "\u25C7",
 		styles:              DefaultStyles(),
 		keymap:              DefaultKeyMap(),
-	}, nil
+	}
+	for _, opt := range opts {
+		opt(&m)
+	}
+	return m, nil
 }
 
 // Styles returns the current style set. Modify the returned value and pass it to SetStyles to apply changes.
