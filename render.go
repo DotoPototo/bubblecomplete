@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-
 // MARK: Public Functions
 
 // View returns the component as a tea.View so [Model] satisfies the Bubble

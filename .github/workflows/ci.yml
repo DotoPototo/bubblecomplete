@@ -1,0 +1,40 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: gofmt
+        run: |
+          diff=$(gofmt -l .)
+          if [ -n "$diff" ]; then
+            echo "Files need gofmt:"
+            echo "$diff"
+            exit 1
+          fi
+
+      - name: go vet (root)
+        run: go vet ./...
+
+      - name: go test -race (root)
+        run: go test -race -count=1 ./...
+
+      - name: go vet (example)
+        working-directory: example
+        run: go vet ./...
+
+      - name: go build (example)
+        working-directory: example
+        run: go build ./...

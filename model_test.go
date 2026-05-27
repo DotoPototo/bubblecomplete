@@ -22,10 +22,10 @@ func assertErrorContains(t *testing.T, err error, wantErr bool, wantMsg string) 
 
 func TestCommandValidate(t *testing.T) {
 	cases := []struct {
-		name      string
-		cmd       *Command
-		wantErr   bool
-		wantMsg   string // substring to match in error; empty = any error
+		name    string
+		cmd     *Command
+		wantErr bool
+		wantMsg string // substring to match in error; empty = any error
 	}{
 		{
 			name:    "nil command",

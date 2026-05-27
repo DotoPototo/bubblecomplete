@@ -203,4 +203,3 @@ func errUnknownType(t string) *ValidationError {
 		msg:  "unknown argument type: " + t,
 	}
 }
-

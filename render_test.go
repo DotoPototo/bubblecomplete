@@ -62,7 +62,6 @@ func TestMatchHighlightLongFlag(t *testing.T) {
 	}
 
 	// Typing "--me" should match the "--message" portion of "-m --message"
-	// Typing "--me" should match the "--message" portion of "-m --message"
 	m.input.SetValue("git commit --me")
 	m.completions, m.matchPrefix = m.getCompletions()
 
@@ -167,7 +166,7 @@ func TestCompletionBoxWidth_AccountsForWideIcons(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.CommandIcon = "🐛" // 2 cells
+	m.CommandIcon = "🐛"  // 2 cells
 	m.ArgumentIcon = "›" // 1 cell
 
 	titleWidth, _ := m.completionBoxWidth(rows)
@@ -292,44 +291,44 @@ func TestCalculateCompletionsOffset(t *testing.T) {
 		want              int
 	}{
 		{
-			name: "indent disabled returns configured offset",
+			name:  "indent disabled returns configured offset",
 			width: 80, input: "git", completionsOffset: 5, indent: false,
 			want: 5,
 		},
 		{
-			name: "empty input returns zero",
+			name:  "empty input returns zero",
 			width: 80, input: "", indent: true,
 			want: 0,
 		},
 		{
-			name: "mid-token: aligns to start of active token after prompt",
+			name:  "mid-token: aligns to start of active token after prompt",
 			width: 80, input: "git c", indent: true,
 			want: 2 + len("git "),
 		},
 		{
-			name: "trailing space: aligns to end of input after prompt",
+			name:  "trailing space: aligns to end of input after prompt",
 			width: 80, input: "git ", indent: true,
 			want: 2 + len("git "),
 		},
 		{
-			name: "nonzero completionsOffset adds on top of base",
+			name:  "nonzero completionsOffset adds on top of base",
 			width: 80, input: "git c", completionsOffset: 3, indent: true,
 			want: 2 + len("git ") + 3,
 		},
 		{
-			name: "wraps modulo terminal width on long input",
+			name:  "wraps modulo terminal width on long input",
 			width: 10, input: "git commit ", indent: true,
 			// "> git commit " is 13 cells; the new token starts at col (13 % 10) = 3 on the wrapped line
 			want: 3,
 		},
 		{
-			name: "quoted argument with spaces aligns at start of quoted token",
+			name:  "quoted argument with spaces aligns at start of quoted token",
 			width: 80, input: `cat "my file"`, indent: true,
 			// LastIndex of `"my file"` is byte 4 → trimmedInput "cat " (4 cells)
 			want: 2 + 4,
 		},
 		{
-			name: "wide characters before active token use display width",
+			name:  "wide characters before active token use display width",
 			width: 80, input: "日本 file", indent: true,
 			// "日本 " is 5 cells (2+2+1)
 			want: 2 + 5,

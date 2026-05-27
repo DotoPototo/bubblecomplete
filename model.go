@@ -25,7 +25,7 @@ type Model struct {
 	// ---- Commands ----
 
 	// The commands available
-	Commands     []*Command
+	Commands      []*Command
 	validationErr error
 
 	// ---- Completions ----
