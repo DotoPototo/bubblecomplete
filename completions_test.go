@@ -81,6 +81,100 @@ func TestCommandTokenDetection_IgnoresQuotedMatches(t *testing.T) {
 	}
 }
 
+func TestSplitPositionArgsAndFlags_CombinedShortFlagAttribution(t *testing.T) {
+	// "-nf" — -n is bool, -f is string (value-taking). The combined-short-flag
+	// rule (validation-enforced) says the value-taking flag must be last, so
+	// classification must look at the last char ('f') to decide whether the
+	// token is followed by a value. Without the fix, iteration order of the
+	// command's Flags slice would determine the answer and could leave the
+	// "value" sitting in the wrong slot.
+	cmd := &Command{
+		Command: "demo",
+		PositionalArguments: []*PositionalArgument{
+			{Name: "pos", Type: StringArgument, Required: true},
+		},
+		Flags: []*Flag{
+			{ShortFlag: "-n", Description: "bool first", Type: BoolArgument},
+			{ShortFlag: "-f", Description: "string last", Type: StringArgument},
+		},
+	}
+
+	_, flags := splitPositionArgsAndFlags([]string{"-nf", "value", "positional"}, cmd, nil)
+	wantFlags := []string{"-nf", "value"}
+	if len(flags) != len(wantFlags) {
+		t.Fatalf("flags = %v, want %v", flags, wantFlags)
+	}
+	for i := range wantFlags {
+		if flags[i] != wantFlags[i] {
+			t.Errorf("flags[%d] = %q, want %q", i, flags[i], wantFlags[i])
+		}
+	}
+}
+
+func TestSplitPositionArgsAndFlags_NoDuplicateAppends(t *testing.T) {
+	// cat has 4 flags; -p matches only the last one. The old loop would visit
+	// every flag, append "-p" once via the no-match dedup branch, then again
+	// when the match was found.
+	catCmd := findTestCommand("cat")
+	if catCmd == nil {
+		t.Fatal("cat command missing from TestCommands")
+	}
+
+	_, flags := splitPositionArgsAndFlags([]string{"-p", "./README.md"}, catCmd, nil)
+	count := 0
+	for _, f := range flags {
+		if f == "-p" {
+			count++
+		}
+	}
+	if count != 1 {
+		t.Errorf("-p appeared %d times in flag args, want 1 (%v)", count, flags)
+	}
+}
+
+func TestPersistentFlag_RecognizedInValueDetection(t *testing.T) {
+	// Build a parent with a persistent value-taking flag and a subcommand.
+	// The flag value parsers must treat the persistent flag as effective on
+	// the subcommand, not just the flags declared on the subcommand itself.
+	persistent := &Flag{
+		LongFlag:    "--config",
+		Description: "Path to config",
+		Type:        StringArgument,
+		Persistent:  true,
+	}
+	root := &Command{
+		Command: "tool",
+		Flags:   []*Flag{persistent},
+		SubCommands: []*Command{
+			{Command: "run", Flags: []*Flag{}},
+		},
+	}
+	commands := []*Command{root}
+
+	// User has typed "tool run --config " — the next token is the value for
+	// the persistent --config flag.
+	completions, _ := getCompletions("tool run --config ", commands)
+	if len(completions) != 1 {
+		t.Fatalf("expected exactly one completion (the --config flag waiting for value), got %d: %v",
+			len(completions), completionNames(completions))
+	}
+	asFlag, ok := completions[0].(*Flag)
+	if !ok || asFlag.LongFlag != "--config" {
+		t.Errorf("expected --config flag completion, got %T %v", completions[0], completions[0])
+	}
+}
+
+// findTestCommand returns the top-level command with the given name from
+// TestCommands, or nil if not found.
+func findTestCommand(name string) *Command {
+	for _, c := range TestCommands {
+		if c.Command == name {
+			return c
+		}
+	}
+	return nil
+}
+
 func TestInputContainsUnquotedTokenBeforeLast(t *testing.T) {
 	// Different from inputContainsCompletedToken: this helper ignores the
 	// final token entirely (since it represents the currently-typed value)

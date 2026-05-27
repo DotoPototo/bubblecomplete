@@ -97,9 +97,13 @@ func getCompletions(input string, commands []*Command) ([]Completion, string) {
 				finalCommand = c
 				commands = c.SubCommands
 				commandDepth++
-				// If the command has global flags, add them to the global completions
+				// Carry all persistent flags forward as effective flags on
+				// subcommands. Downstream completion paths dedupe via
+				// containsFlag, so we must not pre-filter here — value-
+				// detection needs the persistent flag in scope even when
+				// the user is actively entering it.
 				for _, flag := range c.Flags {
-					if flag.Persistent && !containsFlag(input, flag) {
+					if flag.Persistent {
 						globalFlags = append(globalFlags, flag)
 					}
 				}
@@ -116,7 +120,7 @@ func getCompletions(input string, commands []*Command) ([]Completion, string) {
 	// From here it's if - return statements
 
 	argParts := parts[commandDepth:]
-	posArgs, flagArgs := splitPositionArgsAndFlags(argParts, finalCommand)
+	posArgs, flagArgs := splitPositionArgsAndFlags(argParts, finalCommand, globalFlags)
 
 	matchPrefix := ""
 	if !strings.HasSuffix(input, " ") && len(argParts) > 0 {
@@ -283,12 +287,12 @@ func getFlagCompletions(input string, finalCommand *Command, flagArgParts []stri
 	}
 
 	// If we're entering a flag value, show only the flag for that value
-	if yes, flag := isEnteringFlagValue(input, finalCommand, flagArgParts); yes {
+	if yes, flag := isEnteringFlagValue(input, finalCommand, flagArgParts, globalFlags); yes {
 		return []Completion{flag}, true
 	}
 
 	// If we need to enter a flag value, show only the flag for that value
-	if yes, flag := needToEnterFlagValue(finalCommand, flagArgParts); yes {
+	if yes, flag := needToEnterFlagValue(finalCommand, flagArgParts, globalFlags); yes {
 		return []Completion{flag}, true
 	}
 
@@ -328,12 +332,13 @@ func getFlagCompletions(input string, finalCommand *Command, flagArgParts []stri
 	return completions, false
 }
 
-func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []string) (bool, *Flag) {
+func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []string, globalFlags []*Flag) (bool, *Flag) {
 	if len(flagArgParts) == 0 {
 		return false, nil
 	}
 
 	lastArg := flagArgParts[len(flagArgParts)-1]
+	allFlags := slices.Concat(finalCommand.Flags, globalFlags)
 
 	// Check if we're entering a flag value with a space between the flag and value
 	if len(flagArgParts) >= 2 {
@@ -342,7 +347,7 @@ func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []str
 
 		if strings.HasPrefix(lastFlag, "-") && !strings.HasPrefix(lastValue, "-") && !inputContainsUnquotedTokenBeforeLast(input, lastValue) {
 			flagValueToCompare := lastFlag
-			for _, flag := range finalCommand.Flags {
+			for _, flag := range allFlags {
 				// If the last flag is a short flag, only compare the last character
 				if flag.PsFlag == "" && !strings.HasPrefix(lastFlag, "--") && len(lastFlag) > 2 {
 					flagValueToCompare = "-" + lastFlag[len(lastFlag)-1:]
@@ -357,7 +362,7 @@ func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []str
 	// If we're entering a flag value with an equals sign between the flag and value
 	if strings.Contains(lastArg, "=") {
 		if (!stringEndsInQuoteWithoutEquals(lastArg)) || (stringEndsInQuoteWithoutEquals(lastArg) && !strings.HasSuffix(input, " ")) {
-			for _, flag := range finalCommand.Flags {
+			for _, flag := range allFlags {
 				// If the flag isn't a PowerShell flag, ensure it's a long flag
 				if flag.PsFlag == "" && !strings.HasPrefix(lastArg, "--") {
 					continue
@@ -372,10 +377,11 @@ func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []str
 	return false, nil
 }
 
-func needToEnterFlagValue(finalCommand *Command, flagArgParts []string) (bool, *Flag) {
+func needToEnterFlagValue(finalCommand *Command, flagArgParts []string, globalFlags []*Flag) (bool, *Flag) {
 	lastArgument := flagArgParts[len(flagArgParts)-1]
+	allFlags := slices.Concat(finalCommand.Flags, globalFlags)
 
-	for _, flag := range finalCommand.Flags {
+	for _, flag := range allFlags {
 		// If the last argument is a combined short flag, only check for the last character flag
 		flagToCompare := lastArgument
 		if flag.PsFlag == "" && !strings.HasPrefix(lastArgument, "--") && len(lastArgument) > 2 {
@@ -404,7 +410,7 @@ func stringEndsInQuoteWithoutEquals(s string) bool {
 	return false
 }
 
-func splitPositionArgsAndFlags(argParts []string, command *Command) ([]string, []string) {
+func splitPositionArgsAndFlags(argParts []string, command *Command, globalFlags []*Flag) ([]string, []string) {
 	// For a given input, split the input into flags and their values and positional arguments
 
 	// If the input is empty, return nothing
@@ -412,8 +418,10 @@ func splitPositionArgsAndFlags(argParts []string, command *Command) ([]string, [
 		return []string{}, []string{}
 	}
 
+	effectiveFlags := slices.Concat(command.Flags, globalFlags)
+
 	// If there are no flags, return all positional arguments
-	if len(command.Flags) == 0 {
+	if len(effectiveFlags) == 0 {
 		return argParts, []string{}
 	}
 
@@ -428,25 +436,17 @@ func splitPositionArgsAndFlags(argParts []string, command *Command) ([]string, [
 	for i := 0; i < len(argParts); i++ {
 		// If the argument is a flag, add it and its value to the flags
 		if strings.HasPrefix(argParts[i], "-") {
-			for _, a := range command.Flags {
-				if containsFlag(argParts[i], a) {
-					// Add the flag
-					flags = append(flags, argParts[i])
-					// If the argument is a boolean, don't check for a value
-					if a.Type == BoolArgument {
-						break
-					}
-					// If we have enough parts left, add the value
-					if i+1 < len(argParts) {
-						flags = append(flags, argParts[i+1])
-						i++
-					}
-				} else {
-					// It's an invalid but still entered flag
-					if !slices.Contains(flags, argParts[i]) {
-						flags = append(flags, argParts[i])
-					}
+			matched := findMatchingFlag(argParts[i], effectiveFlags)
+			if matched != nil {
+				flags = append(flags, argParts[i])
+				// If the argument is a boolean, don't check for a value
+				if matched.Type != BoolArgument && i+1 < len(argParts) {
+					flags = append(flags, argParts[i+1])
+					i++
 				}
+			} else {
+				// Unknown flag — still record it as an entered flag for completion filtering
+				flags = append(flags, argParts[i])
 			}
 		} else {
 			// If the argument is not a flag, add it to the positional arguments
@@ -455,6 +455,39 @@ func splitPositionArgsAndFlags(argParts []string, command *Command) ([]string, [
 	}
 
 	return positionalArgs, flags
+}
+
+// findMatchingFlag returns the effective flag whose form matches the given
+// argument token, or nil if none does. Single-pass classification avoids the
+// duplicate-append bug the old inner loop had.
+//
+// For combined short flags like "-fm", the LAST character determines the
+// matching flag — validation enforces that only the last char in a combined
+// group may be non-bool (and therefore value-taking), so attributing the
+// token to that flag is consistent with how the command would actually parse.
+func findMatchingFlag(arg string, effectiveFlags []*Flag) *Flag {
+	if isCombinedShortFlag(arg) {
+		lastChar := "-" + arg[len(arg)-1:]
+		for _, f := range effectiveFlags {
+			if containsFlag(lastChar, f) {
+				return f
+			}
+		}
+		return nil
+	}
+	for _, f := range effectiveFlags {
+		if containsFlag(arg, f) {
+			return f
+		}
+	}
+	return nil
+}
+
+// isCombinedShortFlag reports whether arg is a short-flag token whose body
+// is more than one ASCII letter (e.g., "-xyz", but not "-x", "--foo", or "-1").
+func isCombinedShortFlag(arg string) bool {
+	body, ok := shortFlagBody(arg)
+	return ok && len(body) > 1
 }
 
 // inputContainsCompletedToken returns true if input contains an unquoted token
