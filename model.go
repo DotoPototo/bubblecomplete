@@ -12,6 +12,11 @@ import (
 
 // MARK: Types and Vars
 
+// defaultInputCharLimit caps how many runes the embedded textinput will
+// accept. High enough to never hit in normal CLI input; low enough to bound
+// memory if something pastes a megabyte.
+const defaultInputCharLimit = 1000
+
 // Model is the Bubble Tea component that drives input, completion, validation,
 // and history. Construct with [New]; embed in a host model and forward
 // messages to [Model.Update]. Compose into a host view with [Model.View] or
@@ -260,7 +265,7 @@ func New(commands []*Command, width int, opts ...Option) (Model, error) {
 
 	input := textinput.New()
 	input.Focus()
-	input.CharLimit = 1000
+	input.CharLimit = defaultInputCharLimit
 	input.ShowSuggestions = true
 	input.SetWidth(width)
 	input.Placeholder = "Enter command..."

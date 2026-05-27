@@ -1,7 +1,6 @@
 package bubblecomplete
 
 import (
-	"fmt"
 	"slices"
 	"strings"
 	"unicode"
@@ -308,28 +307,38 @@ func getFlagCompletions(input string, finalCommand *Command, flagArgParts []stri
 
 	// Otherwise finally, show completions based on the argument being entered
 	finalPart := flagArgParts[len(flagArgParts)-1]
-	// TODO: Refactor to its own function for better readability and testability
-	for _, flag := range allFlags {
-		if flag.PsFlag != "" && strings.HasPrefix(flag.PsFlag, finalPart) { // If the flag is a powershell flag handle it
-			// Filter out arguments that have already been entered except for the one we're entering
-			if !containsFlag(input, flag) || finalPart == flag.PsFlag {
-				completions = append(completions, flag)
-			}
-		} else if strings.HasPrefix(flag.ShortFlag, finalPart) || strings.HasPrefix(flag.LongFlag, finalPart) { // Otherwise handle traditional flags
-			// If the last argument is a combined short flag, only check for the last character flag
-			flagToCompare := finalPart
-			if !strings.HasPrefix(finalPart, "--") && len(finalPart) > 2 {
-				flagToCompare = "-" + finalPart[len(finalPart)-1:]
-			}
+	completions = append(completions, filterFlagsByPrefix(input, finalPart, allFlags)...)
+	return completions, false
+}
 
-			// Filter out arguments that have already been entered except for the one we're entering
-			if !containsFlag(input, flag) || (flagToCompare == flag.ShortFlag || flagToCompare == flag.LongFlag) {
-				completions = append(completions, flag)
+// filterFlagsByPrefix returns flags whose form starts with prefix. Already-
+// entered flags are filtered out unless the prefix exactly matches them (so
+// the user can finish typing a flag they've already entered).
+func filterFlagsByPrefix(input, prefix string, allFlags []*Flag) []completion {
+	var out []completion
+	for _, flag := range allFlags {
+		if flag.PsFlag != "" && strings.HasPrefix(flag.PsFlag, prefix) {
+			// PsFlag-style: keep if not yet entered, or if the user is
+			// finishing the exact flag.
+			if !containsFlag(input, flag) || prefix == flag.PsFlag {
+				out = append(out, flag)
 			}
+			continue
+		}
+		if !strings.HasPrefix(flag.ShortFlag, prefix) && !strings.HasPrefix(flag.LongFlag, prefix) {
+			continue
+		}
+		// Combined short flags: compare against the LAST char only so the
+		// completion list reflects what would actually be added.
+		flagToCompare := prefix
+		if !strings.HasPrefix(prefix, "--") && len(prefix) > 2 {
+			flagToCompare = "-" + prefix[len(prefix)-1:]
+		}
+		if !containsFlag(input, flag) || flagToCompare == flag.ShortFlag || flagToCompare == flag.LongFlag {
+			out = append(out, flag)
 		}
 	}
-
-	return completions, false
+	return out
 }
 
 func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []string, globalFlags []*Flag) (bool, *Flag) {
@@ -392,7 +401,7 @@ func needToEnterFlagValue(finalCommand *Command, flagArgParts []string, globalFl
 		}
 
 		// If the last argument contains a flag and isn't a long flag / psflag with an equals sign pattern
-		if containsFlag(flagToCompare, flag) && !strings.Contains(lastArgument, fmt.Sprintf("%s=", flag.LongFlag)) && !strings.Contains(lastArgument, fmt.Sprintf("%s=", flag.PsFlag)) {
+		if containsFlag(flagToCompare, flag) && !strings.Contains(lastArgument, flag.LongFlag+"=") && !strings.Contains(lastArgument, flag.PsFlag+"=") {
 			// Bool arguments don't need a value
 			if flag.Type != BoolArgument {
 				return true, flag

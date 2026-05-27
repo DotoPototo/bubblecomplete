@@ -190,6 +190,77 @@ func findTestCommand(name string) *Command {
 	return nil
 }
 
+func TestFilterFlagsByPrefix(t *testing.T) {
+	flags := []*Flag{
+		{ShortFlag: "-v", LongFlag: "--verbose", Type: BoolArgument},
+		{ShortFlag: "-r", Type: BoolArgument},
+		{PsFlag: "-Verbose", Type: BoolArgument},
+	}
+
+	cases := []struct {
+		name   string
+		input  string
+		prefix string
+		want   []string // matched ShortFlag/LongFlag/PsFlag identifiers
+	}{
+		{
+			name: "long-flag prefix matches both -v --verbose and --verbose-only entries",
+			prefix: "--ver", input: "cmd --ver",
+			want: []string{"--verbose"},
+		},
+		{
+			name: "short-flag prefix matches the short form",
+			prefix: "-v", input: "cmd -v",
+			want: []string{"--verbose"},
+		},
+		{
+			name: "psflag prefix matches PsFlag entry",
+			prefix: "-Verb", input: "cmd -Verb",
+			want: []string{"-Verbose"},
+		},
+		{
+			// Prefix "-" matches every flag in the list. -v is already entered
+			// (--verbose is its alias), so the whole {-v, --verbose} flag must
+			// be filtered out; the others stay.
+			name: "already-entered flag is filtered when prefix would otherwise include it",
+			prefix: "-", input: "cmd -v -",
+			want: []string{"-r", "-Verbose"},
+		},
+		{
+			// Exact-prefix match overrides the already-entered filter so the
+			// user can keep typing the flag they're partway through.
+			name: "exact prefix of an already-entered flag still surfaces it",
+			prefix: "-v", input: "cmd -v",
+			want: []string{"--verbose"},
+		},
+		{
+			name: "no match returns nil",
+			prefix: "--nothing", input: "cmd --nothing",
+			want: nil,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := filterFlagsByPrefix(c.input, c.prefix, flags)
+			var gotNames []string
+			for _, f := range got {
+				flag := f.(*Flag)
+				switch {
+				case flag.LongFlag != "":
+					gotNames = append(gotNames, flag.LongFlag)
+				case flag.PsFlag != "":
+					gotNames = append(gotNames, flag.PsFlag)
+				default:
+					gotNames = append(gotNames, flag.ShortFlag)
+				}
+			}
+			if !reflect.DeepEqual(gotNames, c.want) {
+				t.Errorf("got %v, want %v", gotNames, c.want)
+			}
+		})
+	}
+}
+
 func TestInputContainsUnquotedTokenBeforeLast(t *testing.T) {
 	// Different from inputContainsCompletedToken: this helper ignores the
 	// final token entirely (since it represents the currently-typed value)

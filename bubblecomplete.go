@@ -226,15 +226,24 @@ func (m *Model) loadHistoryFromFile() error {
 func (m Model) resetModel() Model {
 	m.input.SetValue("")
 	m.completions = []completion{}
-	m.completionIndex = -1
-	m.completionHolder = ""
-	m.showAll = false
 	m.matchPrefix = ""
-	m.historyIndex = -1
-	m.filteredHistory = nil
 	m.lastInput = ""
 	m.validationErr = nil
+	m = m.clearTransientCompletionState()
 	m.applyInputValidationStyle()
+	return m
+}
+
+// clearTransientCompletionState wipes the per-keystroke completion-cycling
+// and history-cycling state. Shared by resetModel (full submit reset) and
+// the keyBackspace / keyDefault paths, which need the same wipe without
+// touching the input value or validation state.
+func (m Model) clearTransientCompletionState() Model {
+	m.completionHolder = ""
+	m.completionIndex = -1
+	m.historyIndex = -1
+	m.filteredHistory = nil
+	m.showAll = false
 	return m
 }
 
@@ -422,23 +431,12 @@ func (m Model) keyEnter() (Model, tea.Cmd) {
 }
 
 func (m Model) keyBackspace() (Model, tea.Cmd) {
-	m.completionHolder = ""
-	m.completionIndex = -1
-	m.historyIndex = -1
-	m.filteredHistory = []string{}
-	m.showAll = false
-	return m, nil
+	return m.clearTransientCompletionState(), nil
 }
 
 func (m Model) keyDefault(msg tea.KeyPressMsg) (Model, tea.Cmd) {
 	if msg.Text == "" {
 		return m, nil
 	}
-
-	m.completionHolder = ""
-	m.completionIndex = -1
-	m.historyIndex = -1
-	m.filteredHistory = []string{}
-	m.showAll = false
-	return m, nil
+	return m.clearTransientCompletionState(), nil
 }

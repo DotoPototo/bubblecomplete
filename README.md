@@ -244,6 +244,13 @@ bc.SetKeyMap(k)
 - Invalid commands are stored — history is "what the user submitted," not "what validated."
 - `WithHistoryFilePath(path)` (or `SetHistoryFilePath`) loads history from a JSON file on startup and saves atomically on each submit. Errors during load or save surface via `Model.Error()`.
 
+### Input Parsing
+
+- Only the ASCII space character (`U+0020`) separates tokens. Tabs, newlines, and other Unicode whitespace are part of the token they appear in, not separators.
+- Tokens preserve their quote characters in their raw form. Inside double or single quotes, spaces become part of the token until the matching closing quote (or end of input for unclosed quotes).
+- The same tokenizer powers completion, validation, and quote-error reporting — they always see the same parse of the input.
+- Out of scope: shell escapes (`\"`), adjacent quoted segments (`"foo""bar"` is two tokens, not one), variable expansion, and globs. See [Non-Goals](#non-goals).
+
 ### Filesystem Argument Validation
 
 `FileArgument`, `DirArgument`, and `FileDirArgument` validate the value against the real filesystem using `os.Stat`. Paths are resolved relative to the process's working directory. Quoted strings are unquoted before the stat check, so `cat "my file.txt"` works as long as the file actually exists. A configurable working-directory / filesystem abstraction is on the roadmap.
