@@ -231,12 +231,12 @@ func TestFlagValidate(t *testing.T) {
 		{
 			name:    "short flag non-ASCII rune (multi-byte)",
 			flag:    &Flag{ShortFlag: "-é", Type: BoolArgument},
-			wantErr: true, wantMsg: "single ASCII character",
+			wantErr: true, wantMsg: "single ASCII letter",
 		},
 		{
 			name:    "short flag CJK rune",
 			flag:    &Flag{ShortFlag: "-中", Type: BoolArgument},
-			wantErr: true, wantMsg: "single ASCII character",
+			wantErr: true, wantMsg: "single ASCII letter",
 		},
 		{
 			name:    "PsFlag one-rune non-ASCII body still rejected",
@@ -247,6 +247,16 @@ func TestFlagValidate(t *testing.T) {
 			name:    "PsFlag two-rune non-ASCII body accepted",
 			flag:    &Flag{PsFlag: "-éé", Type: BoolArgument},
 			wantErr: false,
+		},
+		{
+			name:    "short flag digit body rejected",
+			flag:    &Flag{ShortFlag: "-1", Type: IntArgument},
+			wantErr: true, wantMsg: "ASCII letter",
+		},
+		{
+			name:    "short flag punctuation body rejected",
+			flag:    &Flag{ShortFlag: "-?", Type: BoolArgument},
+			wantErr: true, wantMsg: "ASCII letter",
 		},
 	}
 	for _, c := range cases {

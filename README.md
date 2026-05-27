@@ -104,7 +104,7 @@ var commands = []*bubblecomplete.Command{
 
 | Field       | Description                                                                        | Type                          |
 | ----------- | ---------------------------------------------------------------------------------- | ----------------------------- |
-| ShortFlag   | The short flag identifier i.e. `-v`                                                | `string`                      |
+| ShortFlag   | Single-ASCII-letter short flag, e.g. `-v`. Use a long or PowerShell flag for non-letter names. | `string` |
 | LongFlag    | The long flag identifier i.e. `--verbose`                                          | `string`                      |
 | PsFlag      | PowerShell-style flag, e.g. `-Verbose` (two or more characters; mutually exclusive with ShortFlag and LongFlag on the same Flag) | `string` |
 | Description | A description of the flag                                                          | `string`                      |

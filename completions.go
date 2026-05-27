@@ -607,8 +607,7 @@ func shortFlagBody(text string) (string, bool) {
 	}
 	body := text[1:]
 	for i := 0; i < len(body); i++ {
-		c := body[i]
-		if !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') {
+		if !isASCIILetter(body[i]) {
 			return "", false
 		}
 	}

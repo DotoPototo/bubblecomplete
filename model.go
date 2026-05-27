@@ -468,9 +468,12 @@ func (f *Flag) Validate() error {
 		return fmt.Errorf("flags must have at least one flag defined")
 	}
 
-	// Short flag validation. Short flags are ASCII-only because the runtime
-	// parser (validateShortFlags) walks the token byte-by-byte to support
-	// combined forms like "-xyz", which is incompatible with multi-byte runes.
+	// Short flag validation. Short flags must be a single ASCII letter:
+	// the runtime parser walks the token byte-by-byte for combined forms
+	// like "-xyz" (incompatible with multi-byte runes), and detection
+	// requires letter bodies so non-flag tokens like "-1" are not
+	// misclassified as flags. Use a long or PowerShell flag for non-letter
+	// names like "-1" or "-?".
 	if f.ShortFlag != "" {
 		if !strings.HasPrefix(f.ShortFlag, "-") {
 			return fmt.Errorf("short flags must start with a dash")
@@ -482,8 +485,8 @@ func (f *Flag) Validate() error {
 		if body == "-" {
 			return fmt.Errorf("short flag body cannot be a dash: %q", f.ShortFlag)
 		}
-		if len(body) != 1 {
-			return fmt.Errorf("short flags must be a single ASCII character: %q", f.ShortFlag)
+		if len(body) != 1 || !isASCIILetter(body[0]) {
+			return fmt.Errorf("short flags must be a single ASCII letter: %q", f.ShortFlag)
 		}
 	}
 
@@ -553,6 +556,10 @@ func containsWhitespace(s string) bool {
 		}
 	}
 	return false
+}
+
+func isASCIILetter(b byte) bool {
+	return (b >= 'a' && b <= 'z') || (b >= 'A' && b <= 'Z')
 }
 
 func isValidArgumentType(t ArgumentType) bool {
