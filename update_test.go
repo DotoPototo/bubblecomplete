@@ -273,6 +273,51 @@ func TestCtrlE_RoutesToKeyRight(t *testing.T) {
 	}
 }
 
+func TestRightArrow_AcceptsInlineHistorySuggestion(t *testing.T) {
+	// Submit a command so it lands in history, then type a partial prefix.
+	// The Bubbles textinput offers it as an inline suggestion; right arrow
+	// must accept the suggestion rather than do nothing.
+	m := newTestModel(t)
+	m = simulateTyping(t, m, "git status")
+	m, _ = pressEnter(t, m)
+
+	m = simulateTyping(t, m, "git st")
+	if len(m.input.MatchedSuggestions()) == 0 {
+		t.Fatal("expected an inline history suggestion after typing prefix")
+	}
+
+	m = simulateKey(t, m, tea.KeyRight)
+	if m.input.Value() != "git status" {
+		t.Errorf("right arrow should accept inline suggestion, got %q", m.input.Value())
+	}
+}
+
+func TestRightArrow_AfterCloseCompletions_NoOp(t *testing.T) {
+	// Tab to select a completion, then close the completion list.
+	// Right arrow afterwards should not resurrect any accept behavior;
+	// state stays at whatever CloseCompletions restored.
+	m := newTestModel(t)
+	m = simulateTyping(t, m, "git stash a")
+	m = simulateKey(t, m, tea.KeyTab)
+	if m.completionIndex < 0 {
+		t.Fatal("expected a selected completion after tab")
+	}
+
+	m.CloseCompletions()
+	if m.completionIndex != -1 {
+		t.Fatalf("expected completionIndex -1 after CloseCompletions, got %d", m.completionIndex)
+	}
+
+	before := m.input.Value()
+	m = simulateKey(t, m, tea.KeyRight)
+	if m.input.Value() != before {
+		t.Errorf("right arrow after CloseCompletions should not change input; was %q, now %q", before, m.input.Value())
+	}
+	if m.completionIndex != -1 {
+		t.Errorf("right arrow after CloseCompletions changed completionIndex to %d", m.completionIndex)
+	}
+}
+
 func TestRightArrow_NoSelection_DoesNotChangeState(t *testing.T) {
 	m := newTestModel(t)
 
