@@ -5,6 +5,21 @@ import (
 	"testing"
 )
 
+// assertErrorContains shrinks the wantErr + wantMsg dance to one call site.
+// wantMsg of "" skips the substring check (handy for "any error will do" cases).
+func assertErrorContains(t *testing.T, err error, wantErr bool, wantMsg string) {
+	t.Helper()
+	if wantErr && err == nil {
+		t.Fatalf("expected error containing %q, got nil", wantMsg)
+	}
+	if !wantErr && err != nil {
+		t.Fatalf("expected no error, got: %v", err)
+	}
+	if wantErr && wantMsg != "" && !strings.Contains(err.Error(), wantMsg) {
+		t.Errorf("error %q does not contain %q", err.Error(), wantMsg)
+	}
+}
+
 func TestCommandValidate(t *testing.T) {
 	cases := []struct {
 		name      string
@@ -131,15 +146,7 @@ func TestCommandValidate(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			err := c.cmd.Validate()
-			if c.wantErr && err == nil {
-				t.Fatalf("expected error containing %q, got nil", c.wantMsg)
-			}
-			if !c.wantErr && err != nil {
-				t.Fatalf("expected no error, got: %v", err)
-			}
-			if c.wantErr && c.wantMsg != "" && !strings.Contains(err.Error(), c.wantMsg) {
-				t.Errorf("error %q does not contain %q", err.Error(), c.wantMsg)
-			}
+			assertErrorContains(t, err, c.wantErr, c.wantMsg)
 		})
 	}
 }
@@ -245,15 +252,7 @@ func TestFlagValidate(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			err := c.flag.Validate()
-			if c.wantErr && err == nil {
-				t.Fatalf("expected error containing %q, got nil", c.wantMsg)
-			}
-			if !c.wantErr && err != nil {
-				t.Fatalf("expected no error, got: %v", err)
-			}
-			if c.wantErr && c.wantMsg != "" && !strings.Contains(err.Error(), c.wantMsg) {
-				t.Errorf("error %q does not contain %q", err.Error(), c.wantMsg)
-			}
+			assertErrorContains(t, err, c.wantErr, c.wantMsg)
 		})
 	}
 }
@@ -294,15 +293,7 @@ func TestPositionalArgumentValidate(t *testing.T) {
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			err := c.arg.Validate()
-			if c.wantErr && err == nil {
-				t.Fatalf("expected error containing %q, got nil", c.wantMsg)
-			}
-			if !c.wantErr && err != nil {
-				t.Fatalf("expected no error, got: %v", err)
-			}
-			if c.wantErr && c.wantMsg != "" && !strings.Contains(err.Error(), c.wantMsg) {
-				t.Errorf("error %q does not contain %q", err.Error(), c.wantMsg)
-			}
+			assertErrorContains(t, err, c.wantErr, c.wantMsg)
 		})
 	}
 }
