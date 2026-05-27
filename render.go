@@ -30,7 +30,7 @@ func (m Model) Render() string {
 	return lg.Width(m.width).Render(output)
 }
 
-// MARK: Completion Row Model
+// MARK: completion Row Model
 
 type completionKind int
 
@@ -46,7 +46,7 @@ type completionRow struct {
 	Kind        completionKind
 }
 
-func kindOf(c Completion) completionKind {
+func kindOf(c completion) completionKind {
 	switch c.(type) {
 	case *Command, Command:
 		return commandKind

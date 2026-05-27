@@ -7,11 +7,11 @@ import (
 	"unicode"
 )
 
-func (m Model) getCompletions() ([]Completion, string) {
+func (m Model) getCompletions() ([]completion, string) {
 	if m.input.Value() == "" && !m.showAll {
-		return []Completion{}, ""
+		return []completion{}, ""
 	}
-	var allCompletions []Completion
+	var allCompletions []completion
 	var matchPrefix string
 
 	if strings.TrimSpace(m.input.Value()) == "" && m.showAll {
@@ -27,8 +27,8 @@ func (m Model) getCompletions() ([]Completion, string) {
 	return allCompletions, matchPrefix
 }
 
-func sortCompletions(completions *[]Completion) {
-	slices.SortFunc(*completions, func(a, b Completion) int {
+func sortCompletions(completions *[]completion) {
+	slices.SortFunc(*completions, func(a, b completion) int {
 		nameA := a.getName()
 		nameB := b.getName()
 
@@ -48,9 +48,9 @@ func sortCompletions(completions *[]Completion) {
 	})
 }
 
-func uniqueCompletions(completions *[]Completion) {
+func uniqueCompletions(completions *[]completion) {
 	seen := make(map[string]struct{})
-	list := []Completion{}
+	list := []completion{}
 	for _, entry := range *completions {
 		if _, exists := seen[entry.getName()]; !exists {
 			seen[entry.getName()] = struct{}{}
@@ -61,19 +61,19 @@ func uniqueCompletions(completions *[]Completion) {
 }
 
 // getCompletions gets completions for the input based on the available commands
-func getCompletions(input string, commands []*Command) ([]Completion, string) {
-	var completions []Completion
+func getCompletions(input string, commands []*Command) ([]completion, string) {
+	var completions []completion
 	var globalFlags []*Flag
 
 	// If the input is empty, return nothing
 	if strings.TrimSpace(input) == "" {
-		return []Completion{}, ""
+		return []completion{}, ""
 	}
 
 	// Split the input into parts so we can handle each part separately
 	parts := splitInput(input)
 	if len(parts) == 0 {
-		return []Completion{}, ""
+		return []completion{}, ""
 	}
 
 	// If there is only one part and the input doesn't end with a space, we're still typing the first command
@@ -114,7 +114,7 @@ func getCompletions(input string, commands []*Command) ([]Completion, string) {
 
 	// If we haven't found any command, it must be invalid input so return nothing
 	if finalCommand == nil {
-		return []Completion{}, ""
+		return []completion{}, ""
 	}
 
 	// From here it's if - return statements
@@ -152,8 +152,8 @@ func handleSubCommandCompletions(
 	input string,
 	flagArgs []string,
 	globalFlags []*Flag,
-) []Completion {
-	var completions []Completion
+) []completion {
+	var completions []completion
 
 	// Show subcommands unless there's more parts than expected (i.e. invalid input or flags for parent command)
 	if len(parts) <= depth || (len(parts) == depth+1 && !strings.HasSuffix(input, " ")) {
@@ -175,8 +175,8 @@ func handlePositionalArgumentCompletions(
 	input string,
 	argParts []string,
 	globalFlags []*Flag,
-) []Completion {
-	var completions []Completion
+) []completion {
+	var completions []completion
 
 	// Show the flag arguments if there are no positional arguments entered
 	if len(posArgs) == 0 {
@@ -198,8 +198,8 @@ func handlePositionalArgumentCompletions(
 	return completions
 }
 
-func getSubCommandCompletions(input string, finalCommand *Command, parts []string) []Completion {
-	completions := []Completion{}
+func getSubCommandCompletions(input string, finalCommand *Command, parts []string) []completion {
+	completions := []completion{}
 
 	// If we've started typing, show only subcommands that start with the input
 	if !strings.HasSuffix(input, " ") {
@@ -225,22 +225,22 @@ func getSubCommandCompletions(input string, finalCommand *Command, parts []strin
 	return completions
 }
 
-func getPositionalArgumentCompletions(input string, finalCommand *Command, posArgParts []string) []Completion {
-	completions := []Completion{}
+func getPositionalArgumentCompletions(input string, finalCommand *Command, posArgParts []string) []completion {
+	completions := []completion{}
 
 	// If we haven't entered any positional arguments yet, show the first one
 	if len(posArgParts) == 0 {
-		return []Completion{finalCommand.PositionalArguments[0]}
+		return []completion{finalCommand.PositionalArguments[0]}
 	}
 
 	// If we're entering a positional argument value, show only the positional argument for that value
 	if yes, arg := isEnteringPosArgValue(input, finalCommand, posArgParts); yes {
-		return []Completion{arg}
+		return []completion{arg}
 	}
 
 	// Otherwise show the next positional argument if there is one
 	if len(posArgParts) < len(finalCommand.PositionalArguments) {
-		return []Completion{finalCommand.PositionalArguments[len(posArgParts)]}
+		return []completion{finalCommand.PositionalArguments[len(posArgParts)]}
 	}
 
 	return completions
@@ -273,8 +273,8 @@ func isEnteringPosArgValue(input string, finalCommand *Command, posArgParts []st
 // getFlagCompletions gets completions for flags based on the input
 //
 // Returns a list of completions and a boolean indicating if this should be the only completion shown or not
-func getFlagCompletions(input string, finalCommand *Command, flagArgParts []string, globalFlags []*Flag) ([]Completion, bool) {
-	completions := []Completion{}
+func getFlagCompletions(input string, finalCommand *Command, flagArgParts []string, globalFlags []*Flag) ([]completion, bool) {
+	completions := []completion{}
 
 	allFlags := slices.Concat(finalCommand.Flags, globalFlags)
 
@@ -288,12 +288,12 @@ func getFlagCompletions(input string, finalCommand *Command, flagArgParts []stri
 
 	// If we're entering a flag value, show only the flag for that value
 	if yes, flag := isEnteringFlagValue(input, finalCommand, flagArgParts, globalFlags); yes {
-		return []Completion{flag}, true
+		return []completion{flag}, true
 	}
 
 	// If we need to enter a flag value, show only the flag for that value
 	if yes, flag := needToEnterFlagValue(finalCommand, flagArgParts, globalFlags); yes {
-		return []Completion{flag}, true
+		return []completion{flag}, true
 	}
 
 	// Otherwise if we end with a space, show all flags not yet entered

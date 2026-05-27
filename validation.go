@@ -151,7 +151,7 @@ func validateFlag(part string, parts []string, i *int, parentCmd *Command, globa
 // are accepted only when they parse as a number for IntArgument / FloatArgument
 // flags (e.g., --depth -1, --threshold -0.5). String values with a leading
 // dash must be quoted or supplied via --flag=value.
-func looksLikeFlagValue(arg Argument, next string) bool {
+func looksLikeFlagValue(arg argument, next string) bool {
 	if !strings.HasPrefix(next, "-") {
 		return true
 	}
@@ -241,7 +241,7 @@ func findFlag(arguments []*Flag, name string) (*Flag, error) {
 	return nil, errors.New("argument not found")
 }
 
-func validateArgumentValue(arg Argument, value string) error {
+func validateArgumentValue(arg argument, value string) error {
 	switch arg.getType() {
 	case StringArgument:
 		return validateStringArgument(arg, value)
@@ -263,7 +263,7 @@ func validateArgumentValue(arg Argument, value string) error {
 	}
 }
 
-func validateStringArgument(arg Argument, value string) error {
+func validateStringArgument(arg argument, value string) error {
 	if err := checkEmptyString(arg, value); err != nil {
 		return err
 	}
@@ -276,7 +276,7 @@ func validateStringArgument(arg Argument, value string) error {
 	return nil
 }
 
-func checkEmptyString(arg Argument, value string) error {
+func checkEmptyString(arg argument, value string) error {
 	if value != "" {
 		return nil
 	}
@@ -288,7 +288,7 @@ func checkEmptyString(arg Argument, value string) error {
 	return errMissingPositionalValue(arg.getName())
 }
 
-func checkUnclosedQuote(arg Argument, value, quote string) error {
+func checkUnclosedQuote(arg argument, value, quote string) error {
 	if len(value) == 1 && value == quote {
 		return errUnclosedQuote()
 	}
@@ -298,33 +298,33 @@ func checkUnclosedQuote(arg Argument, value, quote string) error {
 	return nil
 }
 
-func validateIntArgument(arg Argument, value string) error {
+func validateIntArgument(arg argument, value string) error {
 	if _, err := strconv.Atoi(value); err != nil {
 		return errInvalidInt(arg.getName(), err)
 	}
 	return nil
 }
 
-func validateFloatArgument(arg Argument, value string) error {
+func validateFloatArgument(arg argument, value string) error {
 	if _, err := strconv.ParseFloat(value, 64); err != nil {
 		return errInvalidFloat(arg.getName(), err)
 	}
 	return nil
 }
 
-func validateFileArgument(arg Argument, value string) error {
+func validateFileArgument(arg argument, value string) error {
 	return validatePath(arg, value, true, false)
 }
 
-func validateDirArgument(arg Argument, value string) error {
+func validateDirArgument(arg argument, value string) error {
 	return validatePath(arg, value, false, true)
 }
 
-func validateFileDirArgument(arg Argument, value string) error {
+func validateFileDirArgument(arg argument, value string) error {
 	return validatePath(arg, value, true, true)
 }
 
-func validatePath(arg Argument, value string, wantFile, wantDir bool) error {
+func validatePath(arg argument, value string, wantFile, wantDir bool) error {
 	value = removeQuotes(value)
 
 	var pathType string

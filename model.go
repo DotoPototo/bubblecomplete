@@ -30,7 +30,7 @@ type Model struct {
 
 	// ---- Completions ----
 
-	completions      []Completion
+	completions      []completion
 	completionIndex  int
 	completionHolder string
 	showAll          bool
@@ -83,11 +83,12 @@ type Model struct {
 	keymap KeyMap
 }
 
-// Completion is the internal interface every completable entity implements.
-// All methods are unexported; the interface exists to unify rendering across
-// [Command], [PositionalArgument], and [Flag] and is not an extension point
-// for external packages.
-type Completion interface {
+// completion is the internal interface every completable entity implements.
+// It exists to unify rendering across [Command], [PositionalArgument], and
+// [Flag]. Kept unexported because external packages cannot implement it
+// (the methods are unexported); external extension is planned via the
+// Part 4 CompletionProvider API.
+type completion interface {
 	getName() string
 	getDescription() string
 	getAutocomplete() string
@@ -137,11 +138,10 @@ func (c Command) getAutocomplete() string {
 	return c.Command
 }
 
-// Argument is the internal interface satisfied by [PositionalArgument] and
-// [Flag] so the validator can reason about value types uniformly. Like
-// [Completion], the methods are unexported and external implementations are
-// not supported.
-type Argument interface {
+// argument is the internal interface satisfied by [PositionalArgument] and
+// [Flag] so the validator can reason about value types uniformly. The methods
+// are unexported and external implementations are not supported.
+type argument interface {
 	getName() string
 	getDescription() string
 	getType() ArgumentType

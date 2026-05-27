@@ -632,7 +632,7 @@ func TestMatchingPolicy_FlagsSortAfterNonFlags(t *testing.T) {
 	}
 }
 
-func completionNames(comps []Completion) []string {
+func completionNames(comps []completion) []string {
 	if len(comps) == 0 {
 		return nil
 	}

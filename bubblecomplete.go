@@ -148,7 +148,7 @@ func (m *Model) CloseCompletions() {
 	if m.completions == nil {
 		return
 	}
-	m.completions = []Completion{}
+	m.completions = []completion{}
 	if m.completionHolder != "" || m.showAll {
 		m.input.SetValue(m.completionHolder)
 		m.completionHolder = ""
@@ -225,7 +225,7 @@ func (m *Model) loadHistoryFromFile() error {
 
 func (m Model) resetModel() Model {
 	m.input.SetValue("")
-	m.completions = []Completion{}
+	m.completions = []completion{}
 	m.completionIndex = -1
 	m.matchPrefix = ""
 	m.historyIndex = -1
