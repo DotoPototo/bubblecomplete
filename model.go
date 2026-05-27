@@ -3,6 +3,8 @@ package bubblecomplete
 import (
 	"fmt"
 	"strings"
+	"unicode"
+	"unicode/utf8"
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
@@ -334,56 +336,110 @@ func (m *Model) SetPlaceholder(placeholder string) {
 }
 
 func (c *Command) Validate() error {
+	if c == nil {
+		return fmt.Errorf("commands cannot be nil")
+	}
 	if c.Command == "" {
 		return fmt.Errorf("commands must have a command name")
 	}
+	if strings.TrimSpace(c.Command) != c.Command {
+		return fmt.Errorf("command names cannot have leading or trailing whitespace: %q", c.Command)
+	}
+	if containsWhitespace(c.Command) {
+		return fmt.Errorf("command names cannot contain whitespace: %q", c.Command)
+	}
 
+	if len(c.SubCommands) > 0 && len(c.PositionalArguments) > 0 {
+		return fmt.Errorf("command %q cannot define both SubCommands and PositionalArguments", c.Command)
+	}
+
+	seenFlagAlias := make(map[string]struct{})
 	for _, flag := range c.Flags {
+		if flag == nil {
+			return fmt.Errorf("command %q has a nil flag", c.Command)
+		}
 		if err := flag.Validate(); err != nil {
 			return err
 		}
+		for _, alias := range flagAliases(flag) {
+			if _, exists := seenFlagAlias[alias]; exists {
+				return fmt.Errorf("command %q has duplicate flag alias: %q", c.Command, alias)
+			}
+			seenFlagAlias[alias] = struct{}{}
+		}
 	}
 
+	seenArg := make(map[string]struct{})
 	for _, arg := range c.PositionalArguments {
+		if arg == nil {
+			return fmt.Errorf("command %q has a nil positional argument", c.Command)
+		}
 		if err := arg.Validate(); err != nil {
 			return err
 		}
+		if _, exists := seenArg[arg.Name]; exists {
+			return fmt.Errorf("command %q has duplicate positional argument: %q", c.Command, arg.Name)
+		}
+		seenArg[arg.Name] = struct{}{}
 	}
 
+	seenSub := make(map[string]struct{})
 	for _, subCmd := range c.SubCommands {
+		if subCmd == nil {
+			return fmt.Errorf("command %q has a nil subcommand", c.Command)
+		}
 		if err := subCmd.Validate(); err != nil {
 			return err
 		}
+		if _, exists := seenSub[subCmd.Command]; exists {
+			return fmt.Errorf("command %q has duplicate subcommand: %q", c.Command, subCmd.Command)
+		}
+		seenSub[subCmd.Command] = struct{}{}
 	}
 
 	return nil
 }
 
 func (p *PositionalArgument) Validate() error {
+	if p == nil {
+		return fmt.Errorf("positional arguments cannot be nil")
+	}
 	if p.Name == "" {
 		return fmt.Errorf("positional arguments must have a name")
 	}
 	if p.Type == "" {
 		return fmt.Errorf("positional arguments must have a type")
 	}
+	if !isValidArgumentType(p.Type) {
+		return fmt.Errorf("positional argument %q has an invalid type: %q", p.Name, p.Type)
+	}
 	return nil
 }
 
 func (f *Flag) Validate() error {
+	if f == nil {
+		return fmt.Errorf("flags cannot be nil")
+	}
 	if f.ShortFlag == "" && f.LongFlag == "" && f.PsFlag == "" {
 		return fmt.Errorf("flags must have at least one flag defined")
 	}
 
-	// Short flag validation
+	// Short flag validation. Short flags are ASCII-only because the runtime
+	// parser (validateShortFlags) walks the token byte-by-byte to support
+	// combined forms like "-xyz", which is incompatible with multi-byte runes.
 	if f.ShortFlag != "" {
 		if !strings.HasPrefix(f.ShortFlag, "-") {
 			return fmt.Errorf("short flags must start with a dash")
 		}
-		if len(f.ShortFlag) > 2 {
-			return fmt.Errorf("short flags must be one character")
-		}
-		if f.ShortFlag[1:] == "" {
+		body := f.ShortFlag[1:]
+		if body == "" {
 			return fmt.Errorf("flags must have a flag name")
+		}
+		if body == "-" {
+			return fmt.Errorf("short flag body cannot be a dash: %q", f.ShortFlag)
+		}
+		if len(body) != 1 {
+			return fmt.Errorf("short flags must be a single ASCII character: %q", f.ShortFlag)
 		}
 	}
 
@@ -392,8 +448,12 @@ func (f *Flag) Validate() error {
 		if !strings.HasPrefix(f.LongFlag, "--") {
 			return fmt.Errorf("long flags must start with two dashes")
 		}
-		if f.LongFlag[2:] == "" {
+		body := f.LongFlag[2:]
+		if body == "" {
 			return fmt.Errorf("flags must have a flag name")
+		}
+		if containsWhitespace(body) {
+			return fmt.Errorf("long flag names cannot contain whitespace: %q", f.LongFlag)
 		}
 	}
 
@@ -402,12 +462,17 @@ func (f *Flag) Validate() error {
 		if !strings.HasPrefix(f.PsFlag, "-") {
 			return fmt.Errorf("powershell flags must start with a dash")
 		}
-		if f.PsFlag[1:] == "" {
+		body := f.PsFlag[1:]
+		if body == "" {
 			return fmt.Errorf("flags must have a flag name")
 		}
-		// Ensure PsFlags arent one character
-		if len(f.PsFlag) == 2 {
+		// PsFlag bodies are matched by string prefix at runtime, so multi-byte
+		// runes are fine. Use rune count rather than byte length here.
+		if utf8.RuneCountInString(body) < 2 {
 			return fmt.Errorf("powershell flags must be more than one character")
+		}
+		if containsWhitespace(body) {
+			return fmt.Errorf("powershell flag names cannot contain whitespace: %q", f.PsFlag)
 		}
 		if f.ShortFlag != "" || f.LongFlag != "" {
 			return fmt.Errorf("powershell flags cannot have short or long flags defined")
@@ -417,5 +482,39 @@ func (f *Flag) Validate() error {
 	if f.Type == "" {
 		return fmt.Errorf("flags must have a type")
 	}
+	if !isValidArgumentType(f.Type) {
+		return fmt.Errorf("flag has an invalid type: %q", f.Type)
+	}
 	return nil
+}
+
+func flagAliases(f *Flag) []string {
+	var out []string
+	if f.ShortFlag != "" {
+		out = append(out, f.ShortFlag)
+	}
+	if f.LongFlag != "" {
+		out = append(out, f.LongFlag)
+	}
+	if f.PsFlag != "" {
+		out = append(out, f.PsFlag)
+	}
+	return out
+}
+
+func containsWhitespace(s string) bool {
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			return true
+		}
+	}
+	return false
+}
+
+func isValidArgumentType(t argumentType) bool {
+	switch t {
+	case StringArgument, IntArgument, FloatArgument, BoolArgument, FileArgument, DirArgument, FileDirArgument:
+		return true
+	}
+	return false
 }
