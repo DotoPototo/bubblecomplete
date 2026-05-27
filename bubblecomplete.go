@@ -62,9 +62,11 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.lastInput = m.input.Value()
 		m.completions, m.matchPrefix = m.getCompletions()
 		m.validationErr = m.validateInput()
+		m.applyInputValidationStyle()
 	} else if m.input.Value() == "" && m.validationErr != nil {
 		m.validationErr = nil
 		m.lastInput = ""
+		m.applyInputValidationStyle()
 	}
 
 	// If not loaded, start the blinking cursor
@@ -195,6 +197,7 @@ func (m Model) resetModel() Model {
 	m.matchPrefix = ""
 	m.historyIndex = -1
 	m.validationErr = nil
+	m.applyInputValidationStyle()
 	return m
 }
 

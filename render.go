@@ -4,7 +4,6 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"charm.land/bubbles/v2/textinput"
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
 )
@@ -30,12 +29,6 @@ func (m Model) Render() string {
 // MARK: Private Functions
 
 func (m Model) showCompletionsRender() string {
-	if m.validationErr == nil {
-		setInputTextStyle(&m.input, m.styles.Input.Valid)
-	} else {
-		setInputTextStyle(&m.input, m.styles.Input.Invalid)
-	}
-
 	completionTitles := []string{}
 	completionDescriptions := []string{}
 	maxTitleLength := 0
@@ -244,13 +237,6 @@ func findMatchRange(name, lowerPrefix string, prefixRuneLen int) (int, int) {
 		runePos += utf8.RuneCountInString(word) + 1 // +1 for the space
 	}
 	return -1, -1
-}
-
-func setInputTextStyle(input *textinput.Model, style lipgloss.Style) {
-	styles := input.Styles()
-	styles.Focused.Text = style
-	styles.Blurred.Text = style
-	input.SetStyles(styles)
 }
 
 func stringEndsInQuote(s string) bool {

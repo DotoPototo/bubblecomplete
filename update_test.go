@@ -452,6 +452,41 @@ func TestValueAndValidationError(t *testing.T) {
 	}
 }
 
+func TestRender_IsIdempotent(t *testing.T) {
+	m := newTestModel(t)
+	m = simulateTyping(t, m, "git stash a")
+
+	first := m.Render()
+	second := m.Render()
+	if first != second {
+		t.Errorf("Render not idempotent:\nfirst:  %q\nsecond: %q", first, second)
+	}
+}
+
+func TestInputTextStyle_TracksValidation(t *testing.T) {
+	m := newTestModel(t)
+	sample := "x"
+
+	got := m.input.Styles().Focused.Text.Render(sample)
+	if got != m.Styles().Input.Valid.Render(sample) {
+		t.Error("Initial input Focused.Text should be the Valid style")
+	}
+
+	m = simulateTyping(t, m, "git stash a")
+	got = m.input.Styles().Focused.Text.Render(sample)
+	if got != m.Styles().Input.Invalid.Render(sample) {
+		t.Error("After invalid input, Focused.Text should be the Invalid style")
+	}
+
+	for range "git stash a" {
+		m = simulateKey(t, m, tea.KeyBackspace)
+	}
+	got = m.input.Styles().Focused.Text.Render(sample)
+	if got != m.Styles().Input.Valid.Render(sample) {
+		t.Error("After clearing input, Focused.Text should return to the Valid style")
+	}
+}
+
 func TestNew_AppliesOptions(t *testing.T) {
 	customKM := DefaultKeyMap()
 	customKM.Submit = key.NewBinding(key.WithKeys("ctrl+s"))

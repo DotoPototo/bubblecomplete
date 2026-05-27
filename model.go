@@ -260,6 +260,7 @@ func New(commands []*Command, width int, opts ...Option) (Model, error) {
 	for _, opt := range opts {
 		opt(&m)
 	}
+	m.applyInputValidationStyle()
 	return m, nil
 }
 
@@ -271,6 +272,21 @@ func (m Model) Styles() Styles {
 // SetStyles replaces the component's styles.
 func (m *Model) SetStyles(s Styles) {
 	m.styles = s
+	m.applyInputValidationStyle()
+}
+
+// applyInputValidationStyle pushes the current valid/invalid input style into
+// the embedded textinput so Render stays free of side effects. Call after any
+// change to validationErr or styles.
+func (m *Model) applyInputValidationStyle() {
+	style := m.styles.Input.Valid
+	if m.validationErr != nil {
+		style = m.styles.Input.Invalid
+	}
+	s := m.input.Styles()
+	s.Focused.Text = style
+	s.Blurred.Text = style
+	m.input.SetStyles(s)
 }
 
 // Value returns the current input value.
