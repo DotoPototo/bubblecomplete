@@ -158,7 +158,7 @@ func (m Model) showCompletionsRender() string {
 	copy(visible, rendered[start:end])
 
 	if len(rendered) > rowsToShow && m.ShowScrollbar {
-		scrollbar := m.renderScrollbar(len(visible), len(rendered), start)
+		scrollbar := renderScrollbar(len(visible), len(rendered), start, m.styles.Scrollbar)
 		for j := range visible {
 			visible[j] = lipgloss.JoinHorizontal(lipgloss.Left, visible[j], scrollbar[j])
 		}
@@ -309,20 +309,32 @@ func truncateDescription(s string, maxWidth int) string {
 	return ansi.Truncate(s, maxWidth, "…")
 }
 
-func (m Model) renderScrollbar(height, totalItems, offset int) []string {
+// renderScrollbar lays out a vertical scrollbar of length height for a list of
+// totalItems items, with the viewport's top at offset. Returns nil when the
+// scrollbar cannot be drawn (zero height or total).
+func renderScrollbar(height, totalItems, offset int, s ScrollbarStyles) []string {
+	if height <= 0 || totalItems <= 0 {
+		return nil
+	}
 	thumbSize := max(1, height*height/totalItems)
+	if thumbSize > height {
+		thumbSize = height
+	}
 	scrollRange := totalItems - height
 	trackRange := height - thumbSize
 	thumbStart := 0
-	if scrollRange > 0 {
+	if scrollRange > 0 && trackRange > 0 {
 		thumbStart = offset * trackRange / scrollRange
+	}
+	if thumbStart+thumbSize > height {
+		thumbStart = height - thumbSize
 	}
 	result := make([]string, height)
 	for i := range height {
 		if i >= thumbStart && i < thumbStart+thumbSize {
-			result[i] = m.styles.Scrollbar.Thumb.Render("┃")
+			result[i] = s.Thumb.Render("┃")
 		} else {
-			result[i] = m.styles.Scrollbar.Track.Render("│")
+			result[i] = s.Track.Render("│")
 		}
 	}
 	return result

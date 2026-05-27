@@ -1,6 +1,7 @@
 package bubblecomplete
 
 import (
+	"reflect"
 	"strings"
 	"testing"
 
@@ -317,6 +318,37 @@ func TestCalculateCompletionsOffset(t *testing.T) {
 			if got != c.want {
 				t.Errorf("input=%q width=%d completions=%dcells: got %d, want %d",
 					c.input, c.width, lipgloss.Width(c.completions), got, c.want)
+			}
+		})
+	}
+}
+
+func TestRenderScrollbar(t *testing.T) {
+	const thumb, track = "┃", "│"
+
+	cases := []struct {
+		name                  string
+		height, total, offset int
+		want                  []string
+	}{
+		{"zero height returns nil", 0, 20, 0, nil},
+		{"zero total returns nil", 5, 0, 0, nil},
+		{"first window: thumb at top", 5, 20, 0,
+			[]string{thumb, track, track, track, track}},
+		{"last window: thumb at bottom", 5, 20, 15,
+			[]string{track, track, track, track, thumb}},
+		{"middle: thumb in middle", 5, 10, 2,
+			[]string{track, thumb, thumb, track, track}},
+		{"thumb size never zero on huge totals", 5, 1000, 0,
+			[]string{thumb, track, track, track, track}},
+		{"thumb clamped to height when total <= height", 5, 5, 0,
+			[]string{thumb, thumb, thumb, thumb, thumb}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := renderScrollbar(c.height, c.total, c.offset, ScrollbarStyles{})
+			if !reflect.DeepEqual(got, c.want) {
+				t.Errorf("got %v, want %v", got, c.want)
 			}
 		})
 	}
