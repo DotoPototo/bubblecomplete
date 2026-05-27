@@ -290,3 +290,126 @@ func TestValidateCommandInput(t *testing.T) {
 		})
 	}
 }
+
+func TestValidationError_KindInspection(t *testing.T) {
+	cases := []struct {
+		name      string
+		input     string
+		wantKind  ValidationErrorKind
+		wantToken string
+		wantArg   string
+	}{
+		{"invalid command", "unknown", InvalidCommand, "unknown", ""},
+		{"unexpected argument", "cat ./README.md extra", UnexpectedArgument, "extra", ""},
+		{"missing positional", "cat", MissingPositionalArgument, "", "File"},
+		{"unknown flag", "git commit --invalid", UnknownFlag, "", "--invalid"},
+		{"missing flag value", "git commit -m", MissingFlagValue, "", "-m"},
+		{"invalid int value", "ps -intarg notanumber ./README.md", InvalidArgumentValue, "", "-intarg"},
+		{"path not found", "ps no-such-file.txt", PathNotFound, "", "Input"},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateCommandInput(c.input, TestCommands)
+			if err == nil {
+				t.Fatalf("expected error for %q", c.input)
+			}
+			var ve *ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *ValidationError, got %T", err)
+			}
+			if ve.Kind != c.wantKind {
+				t.Errorf("Kind = %d, want %d", ve.Kind, c.wantKind)
+			}
+			if ve.Token != c.wantToken {
+				t.Errorf("Token = %q, want %q", ve.Token, c.wantToken)
+			}
+			if ve.Argument != c.wantArg {
+				t.Errorf("Argument = %q, want %q", ve.Argument, c.wantArg)
+			}
+		})
+	}
+}
+
+func TestValidationError_MalformedFlagSurfaces(t *testing.T) {
+	cases := []struct {
+		name    string
+		input   string
+		wantMsg string
+	}{
+		{
+			name:    "bare dash without flag chars",
+			input:   "git -",
+			wantMsg: "invalid argument: -",
+		},
+		{
+			name:    "non-bool short flag not last in combined group",
+			input:   "cat -fn ./README.md",
+			wantMsg: "flag '-f' must be the last in a combined group",
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			err := validateCommandInput(c.input, TestCommands)
+			if err == nil {
+				t.Fatalf("expected error for %q", c.input)
+			}
+			var ve *ValidationError
+			if !errors.As(err, &ve) {
+				t.Fatalf("expected *ValidationError, got %T", err)
+			}
+			if ve.Kind != MalformedFlag {
+				t.Errorf("Kind = %d, want MalformedFlag", ve.Kind)
+			}
+			if ve.Error() != c.wantMsg {
+				t.Errorf("message = %q, want %q", ve.Error(), c.wantMsg)
+			}
+		})
+	}
+}
+
+func TestCheckEmptyString_RoutesByArgumentType(t *testing.T) {
+	// checkEmptyString is the defensive guard for an empty value reaching
+	// validateArgumentValue. The Kind must reflect the calling context
+	// (flag vs positional) so hosts can route on Kind even if upstream
+	// guards regress.
+	flag := &Flag{ShortFlag: "-m", Type: StringArgument}
+	pos := &PositionalArgument{Name: "File", Type: StringArgument, Required: true}
+
+	flagErr := checkEmptyString(flag, "")
+	var ve *ValidationError
+	if !errors.As(flagErr, &ve) {
+		t.Fatalf("flag empty: expected *ValidationError, got %T", flagErr)
+	}
+	if ve.Kind != MissingFlagValue {
+		t.Errorf("flag empty: Kind = %d, want MissingFlagValue", ve.Kind)
+	}
+	if ve.Error() != "missing value for flag '-m'" {
+		t.Errorf("flag empty message = %q", ve.Error())
+	}
+
+	posErr := checkEmptyString(pos, "")
+	if !errors.As(posErr, &ve) {
+		t.Fatalf("positional empty: expected *ValidationError, got %T", posErr)
+	}
+	if ve.Kind != MissingPositionalArgument {
+		t.Errorf("positional empty: Kind = %d, want MissingPositionalArgument", ve.Kind)
+	}
+	if ve.Error() != "missing value for argument: File" {
+		t.Errorf("positional empty message = %q", ve.Error())
+	}
+
+	if got := checkEmptyString(flag, "non-empty"); got != nil {
+		t.Errorf("non-empty value should return nil, got %v", got)
+	}
+}
+
+func TestValidationError_UnwrapPreservesUnderlying(t *testing.T) {
+	err := validateCommandInput("ps -intarg abc ./README.md", TestCommands)
+	var ve *ValidationError
+	if !errors.As(err, &ve) {
+		t.Fatalf("expected *ValidationError, got %T", err)
+	}
+	if ve.Err == nil {
+		t.Fatal("expected non-nil underlying error for strconv failure")
+	}
+}

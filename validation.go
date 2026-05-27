@@ -2,7 +2,6 @@ package bubblecomplete
 
 import (
 	"errors"
-	"fmt"
 	"os"
 	"slices"
 	"strconv"
@@ -20,7 +19,7 @@ func (m *Model) validateInput() error {
 func validateCommandInput(input string, commands []*Command) error {
 	parts := splitInput(input)
 	if len(parts) == 0 {
-		return errors.New("empty command")
+		return errEmptyCommand()
 	}
 
 	var parentCmd *Command
@@ -36,7 +35,7 @@ func validateCommandInput(input string, commands []*Command) error {
 			cmd, err := findCommand(currentCommands, part)
 			if err != nil {
 				if parentCmd == nil {
-					return errors.New("invalid command: " + part)
+					return errInvalidCommand(part)
 				}
 				// If no subcommand is found, stop looking for commands
 				isCommand = false
@@ -62,9 +61,29 @@ func validateCommandInput(input string, commands []*Command) error {
 		}
 
 		if strings.HasPrefix(part, "-") {
+			// -x=VALUE syntax bypasses combined-short-flag parsing because
+			// validateShortFlags treats every char after the dash as its own
+			// flag name and has no notion of an inline value.
+			if strings.Contains(part, "=") {
+				if err := validateFlag(part, parts, &i, parentCmd, globalFlags); err != nil {
+					return err
+				}
+				continue
+			}
+
 			err := validateShortFlags(part, parts, &i, parentCmd, globalFlags)
 			if err != nil {
-				if err := validateFlag(part, parts, &i, parentCmd, globalFlags); err != nil {
+				// Only fall back to long/PsFlag parsing when the short-flag
+				// parser failed because the char wasn't a known short flag.
+				// Other errors (malformed token, misused position, missing
+				// value) come from a successful short-flag identification
+				// and must surface to the user.
+				var ve *ValidationError
+				if errors.As(err, &ve) && ve.Kind == UnknownFlag {
+					if err := validateFlag(part, parts, &i, parentCmd, globalFlags); err != nil {
+						return err
+					}
+				} else {
 					return err
 				}
 			}
@@ -79,7 +98,7 @@ func validateCommandInput(input string, commands []*Command) error {
 			continue
 		}
 
-		return errors.New("unexpected argument: " + part)
+		return errUnexpectedArgument(part)
 	}
 
 	// Check if all required positional arguments are present
@@ -90,7 +109,7 @@ func validateCommandInput(input string, commands []*Command) error {
 		}
 	}
 	if positionalIndex < expectedPositionalArgs {
-		return fmt.Errorf("missing positional argument: %s", parentCmd.PositionalArguments[positionalIndex].Name)
+		return errMissingPositional(parentCmd.PositionalArguments[positionalIndex].Name)
 	}
 
 	return nil
@@ -107,18 +126,18 @@ func validateFlag(part string, parts []string, i *int, parentCmd *Command, globa
 	}
 
 	if parentCmd == nil {
-		return errors.New("invalid flag: " + part)
+		return errInvalidFlag(part)
 	}
 
 	allFlags := slices.Concat(parentCmd.Flags, globalFlags)
 	arg, err := findFlag(allFlags, argName)
 	if err != nil {
-		return fmt.Errorf("flag '%s' not found", argName)
+		return errFlagNotFound(argName)
 	}
 
 	if arg.getType() != BoolArgument && argValue == "" {
 		if *i == len(parts)-1 || strings.HasPrefix(parts[*i+1], "-") {
-			return fmt.Errorf("missing value for flag '%s'", argName)
+			return errMissingFlagValue(argName)
 		}
 		argValue = parts[*i+1]
 		*i++
@@ -131,7 +150,7 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 	combinedFlags := part[1:]
 
 	if len(combinedFlags) == 0 {
-		return errors.New("invalid argument: " + part)
+		return errInvalidArgumentToken(part)
 	}
 
 	for j := 0; j < len(combinedFlags); j++ {
@@ -139,24 +158,24 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 		argValue := ""
 
 		if parentCmd == nil {
-			return errors.New("invalid argument: " + part)
+			return errInvalidArgumentToken(part)
 		}
 
 		allFlags := slices.Concat(parentCmd.Flags, globalFlags)
 		arg, err := findFlag(allFlags, argName)
 		if err != nil {
-			return fmt.Errorf("flag '%s' not found", argName)
+			return errFlagNotFound(argName)
 		}
 
 		if arg.getType() != BoolArgument {
 			if j == len(combinedFlags)-1 {
 				if *i == len(parts)-1 || strings.HasPrefix(parts[*i+1], "-") {
-					return fmt.Errorf("missing value for flag '%s'", argName)
+					return errMissingFlagValue(argName)
 				}
 				argValue = parts[*i+1]
 				*i++
 			} else {
-				return fmt.Errorf("flag '%s' must be the last in a combined group", argName)
+				return errCombinedFlagNotLast(argName)
 			}
 		}
 
@@ -171,7 +190,7 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 func validatePositionalArgument(part string, positionalIndex *int, parentCmd *Command) error {
 	positionalArg := parentCmd.PositionalArguments[*positionalIndex]
 	if positionalArg == nil {
-		return errors.New("unexpected argument: " + part)
+		return errUnexpectedArgument(part)
 	}
 	if !positionalArg.Required && part == "" {
 		return nil
@@ -220,7 +239,7 @@ func validateArgumentValue(arg Argument, value string) error {
 	case FileDirArgument:
 		return validateFileDirArgument(arg, value)
 	default:
-		return errors.New("unknown argument type: " + string(arg.getType()))
+		return errUnknownType(string(arg.getType()))
 	}
 }
 
@@ -238,32 +257,37 @@ func validateStringArgument(arg Argument, value string) error {
 }
 
 func checkEmptyString(arg Argument, value string) error {
-	if value == "" {
-		return errors.New("missing value for argument: " + arg.getName())
+	if value != "" {
+		return nil
 	}
-	return nil
+	// The same check fires for both positional arguments and flag values, so
+	// route the error to the right kind based on the caller's argument type.
+	if _, ok := arg.(*Flag); ok {
+		return errMissingFlagValue(arg.getName())
+	}
+	return errMissingPositionalValue(arg.getName())
 }
 
 func checkUnclosedQuote(arg Argument, value, quote string) error {
 	if len(value) == 1 && value == quote {
-		return errors.New("missing closing quote")
+		return errUnclosedQuote()
 	}
 	if len(value) > 1 && strings.HasPrefix(value, quote) && !strings.HasSuffix(value, quote) {
-		return errors.New("missing closing quote for argument: " + arg.getName())
+		return errUnclosedQuoteForArg(arg.getName())
 	}
 	return nil
 }
 
 func validateIntArgument(arg Argument, value string) error {
 	if _, err := strconv.Atoi(value); err != nil {
-		return errors.New("invalid integer value for argument: " + arg.getName())
+		return errInvalidInt(arg.getName(), err)
 	}
 	return nil
 }
 
 func validateFloatArgument(arg Argument, value string) error {
 	if _, err := strconv.ParseFloat(value, 64); err != nil {
-		return errors.New("invalid float value for argument: " + arg.getName())
+		return errInvalidFloat(arg.getName(), err)
 	}
 	return nil
 }
@@ -296,15 +320,15 @@ func validatePath(arg Argument, value string, wantFile, wantDir bool) error {
 	info, err := os.Stat(value)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return fmt.Errorf("%s does not exist for argument: %s", pathType, arg.getName())
+			return errPathNotExist(pathType, arg.getName())
 		}
-		return fmt.Errorf("error accessing %s for argument: %s", pathType, arg.getName())
+		return errPathAccess(pathType, arg.getName(), err)
 	}
 	if !wantDir && info.IsDir() {
-		return errors.New("file path is a directory: " + arg.getName())
+		return errPathIsDir(arg.getName())
 	}
 	if !wantFile && !info.IsDir() {
-		return errors.New("directory path is a file: " + arg.getName())
+		return errPathIsFile(arg.getName())
 	}
 	return nil
 }
