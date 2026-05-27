@@ -4,14 +4,20 @@ import (
 	"strings"
 	"unicode/utf8"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 var minCompletionsSize = 60
 
 // MARK: Public Functions
 
-func (m Model) View() string {
+func (m Model) View() tea.View {
+	return tea.NewView(m.Render())
+}
+
+func (m Model) Render() string {
 	var output string
 	if m.historyIndex != -1 {
 		output = m.input.View()
@@ -25,9 +31,9 @@ func (m Model) View() string {
 
 func (m Model) showCompletionsRender() string {
 	if m.validationErr == nil {
-		m.input.TextStyle = m.ValidCommandStyle
+		setInputTextStyle(&m.input, m.ValidCommandStyle)
 	} else {
-		m.input.TextStyle = m.InvalidCommandStyle
+		setInputTextStyle(&m.input, m.InvalidCommandStyle)
 	}
 
 	completionTitles := []string{}
@@ -237,6 +243,13 @@ func findMatchRange(name, lowerPrefix string, prefixRuneLen int) (int, int) {
 		runePos += utf8.RuneCountInString(word) + 1 // +1 for the space
 	}
 	return -1, -1
+}
+
+func setInputTextStyle(input *textinput.Model, style lipgloss.Style) {
+	styles := input.Styles()
+	styles.Focused.Text = style
+	styles.Blurred.Text = style
+	input.SetStyles(styles)
 }
 
 func stringEndsInQuote(s string) bool {

@@ -4,10 +4,9 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/key"
-	"github.com/charmbracelet/bubbles/textinput"
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
+	"charm.land/bubbles/v2/key"
+	"charm.land/bubbles/v2/textinput"
+	"charm.land/lipgloss/v2"
 )
 
 // MARK: Types and Vars
@@ -243,15 +242,14 @@ func New(commands []*Command, width int) (Model, error) {
 		}
 	}
 
-	// https://github.com/charmbracelet/lipgloss/issues/73
-	lipgloss.SetHasDarkBackground(termenv.HasDarkBackground())
-
 	input := textinput.New()
 	input.Focus()
 	input.CharLimit = 1000
 	input.ShowSuggestions = true
+	input.SetWidth(width)
+	input.Placeholder = "Enter command..."
 
-	inputKeyMap := textinput.DefaultKeyMap
+	inputKeyMap := textinput.DefaultKeyMap()
 	inputKeyMap.AcceptSuggestion = key.NewBinding()
 	inputKeyMap.NextSuggestion = key.NewBinding()
 	inputKeyMap.PrevSuggestion = key.NewBinding()
@@ -294,6 +292,7 @@ func New(commands []*Command, width int) (Model, error) {
 // This is used to calculate the offset for the completions and when text should be wrapped
 func (m *Model) SetWidth(width int) {
 	m.width = width
+	m.input.SetWidth(width)
 }
 
 // Set the input placeholder text

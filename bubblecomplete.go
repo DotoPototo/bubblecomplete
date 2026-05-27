@@ -7,8 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+	"charm.land/bubbles/v2/textinput"
+	tea "charm.land/bubbletea/v2"
 )
 
 // MARK: Types and Vars
@@ -30,7 +30,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 
 	// Handle key presses
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch msg.String() {
 		case "tab", "ctrl+n", "shift+tab", "ctrl+p":
 			m, cmd = m.keyTab(msg.String())
@@ -45,7 +45,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		case "right", "ctrl+e":
 			m, cmd = m.keyRight()
 		default:
-			m, cmd = m.keyDefault(msg.String())
+			m, cmd = m.keyDefault(msg)
 		}
 	}
 	cmds = append(cmds, cmd)
@@ -410,8 +410,8 @@ func (m Model) keyBackspace() (Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m Model) keyDefault(msg string) (Model, tea.Cmd) {
-	if len(msg) > 1 {
+func (m Model) keyDefault(msg tea.KeyPressMsg) (Model, tea.Cmd) {
+	if msg.Text == "" {
 		return m, nil
 	}
 

@@ -3,23 +3,29 @@ package bubblecomplete
 import (
 	"testing"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 )
 
 // simulateTyping sends each character of text through the full Update cycle.
 func simulateTyping(t *testing.T, m Model, text string) Model {
 	t.Helper()
 	for _, r := range text {
-		msg := tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}}
+		msg := tea.KeyPressMsg{Code: r, Text: string(r)}
 		m, _ = m.Update(msg)
 	}
 	return m
 }
 
 // simulateKey sends a single special key through the full Update cycle.
-func simulateKey(t *testing.T, m Model, keyType tea.KeyType) Model {
+func simulateKey(t *testing.T, m Model, code rune) Model {
 	t.Helper()
-	m, _ = m.Update(tea.KeyMsg{Type: keyType})
+	m, _ = m.Update(tea.KeyPressMsg{Code: code})
+	return m
+}
+
+func simulateKeyMod(t *testing.T, m Model, code rune, mod tea.KeyMod) Model {
+	t.Helper()
+	m, _ = m.Update(tea.KeyPressMsg{Code: code, Mod: mod})
 	return m
 }
 
@@ -28,7 +34,7 @@ func simulateKey(t *testing.T, m Model, keyType tea.KeyType) Model {
 // otherwise it wraps in BatchMsg, so we handle both cases.
 func pressEnter(t *testing.T, m Model) (Model, SelectedCommandMsg) {
 	t.Helper()
-	m, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m, cmd := m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
 	if cmd == nil {
 		t.Fatal("Update returned nil cmd for enter")
 	}
@@ -179,7 +185,7 @@ func TestShiftTabCycling_ReversesDirection(t *testing.T) {
 	m = simulateKey(t, m, tea.KeyTab)
 	firstValue := m.input.Value()
 
-	m = simulateKey(t, m, tea.KeyShiftTab)
+	m = simulateKeyMod(t, m, tea.KeyTab, tea.ModShift)
 
 	if m.completionIndex != -1 {
 		t.Errorf("Expected completionIndex -1 after shift-tab from first, got %d", m.completionIndex)
@@ -257,7 +263,7 @@ func TestCtrlE_RoutesToKeyRight(t *testing.T) {
 	}
 
 	// ctrl+e should clear completionHolder (same as right arrow)
-	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyCtrlE})
+	m, _ = m.Update(tea.KeyPressMsg{Code: 'e', Mod: tea.ModCtrl})
 
 	if m.completionHolder != "" {
 		t.Errorf("Expected empty completionHolder after ctrl+e, got %q", m.completionHolder)

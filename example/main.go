@@ -8,8 +8,8 @@ import (
 
 	bubblecomplete "github.com/dotopototo/bubblecomplete"
 
-	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 var (
@@ -40,7 +40,6 @@ func initialModel() tea.Model {
 	home, _ := os.UserHomeDir()
 	historyFilePath := home + "/.bubblecomplete_history.json"
 	bc.SetHistoryFilePath(historyFilePath)
-	bc.SetPlaceholder("Enter Command...")
 
 	bc.HistoryLimit = 50
 
@@ -60,11 +59,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	m.bubblecomplete, cmd = m.bubblecomplete.Update(msg)
 
 	switch msg := msg.(type) {
-	case tea.KeyMsg:
-		switch msg.Type {
-		case tea.KeyCtrlC:
+	case tea.KeyPressMsg:
+		switch msg.String() {
+		case "ctrl+c":
 			return m, tea.Quit
-		case tea.KeyEsc:
+		case "esc":
 			if m.bubblecomplete.ShowingCompletions() {
 				m.bubblecomplete.CloseCompletions()
 			}
@@ -79,12 +78,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
 	if m.bubblecomplete.Err != nil {
-		return m.bubblecomplete.Err.Error()
+		return tea.NewView(m.bubblecomplete.Err.Error())
 	}
 
-	text := "Enter Command:"
+	var text string
 	if m.command != "" {
 		text = "Entered Command: "
 		if m.err != nil {
@@ -96,12 +95,12 @@ func (m model) View() string {
 		} else {
 			text += validCommandStyle.Render(m.command)
 		}
+		text += "\n"
 	}
-	return text + "\n" + m.bubblecomplete.View()
+	return tea.NewView(text + m.bubblecomplete.Render())
 }
 
 func main() {
-	// Profiling CPU before the main workload is started
 	f, e := os.Create("cpu.prof")
 	if e != nil {
 		log.Fatal(e)
@@ -115,7 +114,6 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Profiling memory after the main workload is completed
 	fMem, er := os.Create("mem.prof")
 	if er != nil {
 		log.Fatal(er)
@@ -123,7 +121,6 @@ func main() {
 	pprof.WriteHeapProfile(fMem)
 	fMem.Close()
 
-	// Profiling goroutines after the main workload is completed
 	fGoroutine, err := os.Create("goroutine.prof")
 	if err != nil {
 		log.Fatal(err)

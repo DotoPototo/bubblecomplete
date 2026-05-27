@@ -1,3 +1,6 @@
 .vscode/
 *.log
 *.prof
+docs/
+.claude/
+.codex/

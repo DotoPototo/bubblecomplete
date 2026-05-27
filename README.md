@@ -142,8 +142,17 @@ func createModel() tea.Model {
 	return m
 }
 
-func (m model) View() string {
+func (m model) View() tea.View {
   return m.bubblecomplete.View()
+}
+```
+
+When composing Bubblecomplete with other content, use `Render()` to get the
+component's output as a string:
+
+```go
+func (m model) View() tea.View {
+  return tea.NewView("Header\n" + m.bubblecomplete.Render())
 }
 ```
 
@@ -190,7 +199,7 @@ func (m model) View() string {
 
 ## Roadmap
 
-- [ ] Update to bubbletea v2
+- [x] Update to bubbletea v2
 - [x] Support PowerShell style flags
 - [ ] Support PowerShell aliases for flags i.e. `-v` for `-verbose`
 - [ ] Autocomplete for filepaths

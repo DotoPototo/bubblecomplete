@@ -3,9 +3,6 @@ package bubblecomplete
 import (
 	"strings"
 	"testing"
-
-	"github.com/charmbracelet/lipgloss"
-	"github.com/muesli/termenv"
 )
 
 func TestStringEndsInQuote(t *testing.T) {
@@ -30,11 +27,6 @@ func TestStringEndsInQuote(t *testing.T) {
 }
 
 func TestMatchHighlightApplied(t *testing.T) {
-	// Force ANSI color profile so bold escape sequences are emitted in test
-	prev := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.ANSI)
-	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
-
 	m, err := New(TestCommands, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -52,7 +44,7 @@ func TestMatchHighlightApplied(t *testing.T) {
 	}
 
 	// Render and verify the match highlight style appears around the matched prefix
-	output := m.View()
+	output := m.Render()
 	// "co" should be styled with MatchHighlightStyle, "mmit" should not
 	styledCo := m.MatchHighlightStyle.Render("co")
 	if !strings.Contains(output, styledCo) {
@@ -61,15 +53,12 @@ func TestMatchHighlightApplied(t *testing.T) {
 }
 
 func TestMatchHighlightLongFlag(t *testing.T) {
-	prev := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.ANSI)
-	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
-
 	m, err := New(TestCommands, 100)
 	if err != nil {
 		t.Fatal(err)
 	}
 
+	// Typing "--me" should match the "--message" portion of "-m --message"
 	// Typing "--me" should match the "--message" portion of "-m --message"
 	m.input.SetValue("git commit --me")
 	m.completions, m.matchPrefix = m.getCompletions()
@@ -81,7 +70,7 @@ func TestMatchHighlightLongFlag(t *testing.T) {
 		t.Fatal("Expected completions, got none")
 	}
 
-	output := m.View()
+	output := m.Render()
 	// The "--me" portion of "--message" should be highlighted with MatchHighlightStyle
 	styledMe := m.MatchHighlightStyle.Render("--me")
 	if !strings.Contains(output, styledMe) {
@@ -90,10 +79,6 @@ func TestMatchHighlightLongFlag(t *testing.T) {
 }
 
 func TestNoMatchHighlightWhenShowingAll(t *testing.T) {
-	prev := lipgloss.ColorProfile()
-	lipgloss.SetColorProfile(termenv.ANSI)
-	t.Cleanup(func() { lipgloss.SetColorProfile(prev) })
-
 	m, err := New(TestCommands, 100)
 	if err != nil {
 		t.Fatal(err)
@@ -108,7 +93,7 @@ func TestNoMatchHighlightWhenShowingAll(t *testing.T) {
 	}
 
 	// Rendered output should contain no match highlighting escapes
-	output := m.View()
+	output := m.Render()
 	// With empty prefix, no completion name should have the MatchHighlightStyle applied
 	styledTest := m.MatchHighlightStyle.Render("x")
 	// Extract the ANSI prefix (everything before the content character)
