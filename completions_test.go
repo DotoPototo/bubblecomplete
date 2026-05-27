@@ -204,17 +204,17 @@ func TestFilterFlagsByPrefix(t *testing.T) {
 		want   []string // matched ShortFlag/LongFlag/PsFlag identifiers
 	}{
 		{
-			name: "long-flag prefix matches both -v --verbose and --verbose-only entries",
+			name:   "long-flag prefix matches both -v --verbose and --verbose-only entries",
 			prefix: "--ver", input: "cmd --ver",
 			want: []string{"--verbose"},
 		},
 		{
-			name: "short-flag prefix matches the short form",
+			name:   "short-flag prefix matches the short form",
 			prefix: "-v", input: "cmd -v",
 			want: []string{"--verbose"},
 		},
 		{
-			name: "psflag prefix matches PsFlag entry",
+			name:   "psflag prefix matches PsFlag entry",
 			prefix: "-Verb", input: "cmd -Verb",
 			want: []string{"-Verbose"},
 		},
@@ -222,19 +222,19 @@ func TestFilterFlagsByPrefix(t *testing.T) {
 			// Prefix "-" matches every flag in the list. -v is already entered
 			// (--verbose is its alias), so the whole {-v, --verbose} flag must
 			// be filtered out; the others stay.
-			name: "already-entered flag is filtered when prefix would otherwise include it",
+			name:   "already-entered flag is filtered when prefix would otherwise include it",
 			prefix: "-", input: "cmd -v -",
 			want: []string{"-r", "-Verbose"},
 		},
 		{
 			// Exact-prefix match overrides the already-entered filter so the
 			// user can keep typing the flag they're partway through.
-			name: "exact prefix of an already-entered flag still surfaces it",
+			name:   "exact prefix of an already-entered flag still surfaces it",
 			prefix: "-v", input: "cmd -v",
 			want: []string{"--verbose"},
 		},
 		{
-			name: "no match returns nil",
+			name:   "no match returns nil",
 			prefix: "--nothing", input: "cmd --nothing",
 			want: nil,
 		},
