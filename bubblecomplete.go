@@ -202,41 +202,15 @@ func (m Model) resetModel() Model {
 }
 
 func splitInput(input string) []string {
-	var result []string
-	var buffer strings.Builder
-	inQuotes := false
-	var quoteChar rune
-
-	flushBuffer := func() {
-		if buffer.Len() > 0 {
-			result = append(result, buffer.String())
-			buffer.Reset()
-		}
+	tokens := tokenize(input)
+	if len(tokens) == 0 {
+		return nil
 	}
-
-	for _, char := range input {
-		switch {
-		case char == ' ' && !inQuotes:
-			flushBuffer()
-		case char == '"' || char == '\'':
-			if inQuotes && char == quoteChar {
-				inQuotes = false
-				buffer.WriteRune(char)
-				flushBuffer()
-			} else if !inQuotes {
-				inQuotes = true
-				quoteChar = char
-				buffer.WriteRune(char)
-			} else {
-				buffer.WriteRune(char)
-			}
-		default:
-			buffer.WriteRune(char)
-		}
+	out := make([]string, len(tokens))
+	for i, tk := range tokens {
+		out[i] = tk.Raw
 	}
-
-	flushBuffer()
-	return result
+	return out
 }
 
 // MARK: Key Handlers
