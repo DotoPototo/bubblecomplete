@@ -263,6 +263,19 @@ bc.SetKeyMap(k)
 - [x] Option to not show the descriptions of the commands, flags etc
 - [x] More exposed color options for the completion list, scrolling etc
 
+## Non-Goals
+
+Some behaviors are intentionally out of scope. Don't expect:
+
+- Full POSIX shell parsing (e.g., command substitution, here-docs, redirections)
+- Executing commands — Bubblecomplete only reports the submitted string back to the host via `SelectedCommandMsg`
+- Shell alias resolution
+- Environment variable expansion (`$HOME`, `${FOO}`)
+- Glob expansion (`*.go`)
+- Command-specific dynamic completions — until a provider API lands in Part 4
+
+If you need any of these, do them in the host application after receiving the submitted command.
+
 ## FAQ
 
 ### Colors
