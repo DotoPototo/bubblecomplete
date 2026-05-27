@@ -54,6 +54,61 @@ func TestContainsLongFlag(t *testing.T) {
 	}
 }
 
+func TestCommandTokenDetection_IgnoresQuotedMatches(t *testing.T) {
+	// Quoted argument values that happen to contain a command name must not
+	// be treated as the command itself.
+	cases := []struct {
+		name  string
+		input string
+		token string
+		want  bool
+	}{
+		{"plain command token followed by content", "git status", "git", true},
+		{"plain command token with trailing space", "git ", "git", true},
+		{"command token at end with no space (still typing)", "git", "git", false},
+		{"quoted occurrence does not count", `cat "git" `, "git", false},
+		{"command in single-quoted arg does not count", `cat 'git'`, "git", false},
+		{"appears twice — once quoted, once committed", `cat "git" git `, "git", true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := inputContainsCompletedToken(c.input, c.token)
+			if got != c.want {
+				t.Errorf("inputContainsCompletedToken(%q, %q) = %t, want %t",
+					c.input, c.token, got, c.want)
+			}
+		})
+	}
+}
+
+func TestInputContainsUnquotedTokenBeforeLast(t *testing.T) {
+	// Different from inputContainsCompletedToken: this helper ignores the
+	// final token entirely (since it represents the currently-typed value)
+	// and reports whether the same value exists earlier in the input.
+	cases := []struct {
+		name  string
+		input string
+		token string
+		want  bool
+	}{
+		{"only as last token (being typed)", "cmd --flag value", "value", false},
+		{"only as last token with trailing space", "cmd --flag value ", "value", false},
+		{"appears earlier as positional", "cmd value --flag value", "value", true},
+		{"earlier occurrence is quoted (skip)", `cmd "value" --flag value`, "value", false},
+		{"earlier occurrence unquoted", "cmd value extra value", "value", true},
+		{"empty input", "", "value", false},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := inputContainsUnquotedTokenBeforeLast(c.input, c.token)
+			if got != c.want {
+				t.Errorf("inputContainsUnquotedTokenBeforeLast(%q, %q) = %t, want %t",
+					c.input, c.token, got, c.want)
+			}
+		})
+	}
+}
+
 func TestContainsLongFlag_EndOfInput(t *testing.T) {
 	// Token-based detection must recognize a long flag that ends the input
 	// with no trailing space. The previous string-substring approach missed

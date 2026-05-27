@@ -93,13 +93,13 @@ func getCompletions(input string, commands []*Command) ([]Completion, string) {
 	for _, enteredInput := range parts {
 		for _, c := range commands {
 			// If the command is found in the available commands and we've finished typing then use it
-			if c.Command == enteredInput && strings.Contains(input, fmt.Sprintf("%s ", c.Command)) {
+			if c.Command == enteredInput && inputContainsCompletedToken(input, c.Command) {
 				finalCommand = c
 				commands = c.SubCommands
 				commandDepth++
 				// If the command has global flags, add them to the global completions
 				for _, flag := range c.Flags {
-					if flag.Persistent && !containsFlag(input, flag) && strings.Contains(input, fmt.Sprintf("%s ", c.Command)) {
+					if flag.Persistent && !containsFlag(input, flag) {
 						globalFlags = append(globalFlags, flag)
 					}
 				}
@@ -202,7 +202,7 @@ func getSubCommandCompletions(input string, finalCommand *Command, parts []strin
 		for _, command := range finalCommand.SubCommands {
 			if strings.HasPrefix(command.Command, parts[len(parts)-1]) {
 				// Filter out commands that have already been entered
-				if !strings.Contains(input, fmt.Sprintf(" %s ", command.Command)) {
+				if !inputContainsCompletedToken(input, command.Command) {
 					completions = append(completions, command)
 				}
 			}
@@ -213,7 +213,7 @@ func getSubCommandCompletions(input string, finalCommand *Command, parts []strin
 	// Otherwise show all subcommands
 	for _, command := range finalCommand.SubCommands {
 		// Filter out commands that have already been entered
-		if !strings.Contains(input, fmt.Sprintf(" %s ", command.Command)) {
+		if !inputContainsCompletedToken(input, command.Command) {
 			completions = append(completions, command)
 		}
 	}
@@ -340,7 +340,7 @@ func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []str
 		lastFlag := flagArgParts[len(flagArgParts)-2]
 		lastValue := lastArg
 
-		if strings.HasPrefix(lastFlag, "-") && !strings.HasPrefix(lastValue, "-") && !strings.Contains(input, fmt.Sprintf(" %s ", lastValue)) {
+		if strings.HasPrefix(lastFlag, "-") && !strings.HasPrefix(lastValue, "-") && !inputContainsUnquotedTokenBeforeLast(input, lastValue) {
 			flagValueToCompare := lastFlag
 			for _, flag := range finalCommand.Flags {
 				// If the last flag is a short flag, only compare the last character
@@ -455,6 +455,37 @@ func splitPositionArgsAndFlags(argParts []string, command *Command) ([]string, [
 	}
 
 	return positionalArgs, flags
+}
+
+// inputContainsCompletedToken returns true if input contains an unquoted token
+// equal to s that has been moved past — there is either another token after it
+// or the input ends with whitespace. Used to ask "has this command word been
+// committed?" while ignoring matches inside quoted arguments.
+func inputContainsCompletedToken(input, s string) bool {
+	tokens := tokenize(input)
+	for i, tok := range tokens {
+		if tok.Quoted || tok.Unquoted != s {
+			continue
+		}
+		if i < len(tokens)-1 || strings.HasSuffix(input, " ") {
+			return true
+		}
+	}
+	return false
+}
+
+// inputContainsUnquotedTokenBeforeLast returns true if input contains an
+// unquoted token equal to s at any position before the final token. Used to
+// distinguish a value being typed (the final token) from an earlier
+// occurrence of the same value elsewhere in the input.
+func inputContainsUnquotedTokenBeforeLast(input, s string) bool {
+	tokens := tokenize(input)
+	for i := 0; i < len(tokens)-1; i++ {
+		if !tokens[i].Quoted && tokens[i].Unquoted == s {
+			return true
+		}
+	}
+	return false
 }
 
 // containsFlag returns true if the input contains an unquoted reference to the
