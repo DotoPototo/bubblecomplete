@@ -31,9 +31,9 @@ func (m Model) Render() string {
 
 func (m Model) showCompletionsRender() string {
 	if m.validationErr == nil {
-		setInputTextStyle(&m.input, m.ValidCommandStyle)
+		setInputTextStyle(&m.input, m.styles.Input.Valid)
 	} else {
-		setInputTextStyle(&m.input, m.InvalidCommandStyle)
+		setInputTextStyle(&m.input, m.styles.Input.Invalid)
 	}
 
 	completionTitles := []string{}
@@ -60,7 +60,7 @@ func (m Model) showCompletionsRender() string {
 
 			// Apply match highlighting to the matched portion of the name
 			if start, end := findMatchRange(name, lowerPrefix, prefixRuneLen); start >= 0 {
-				name = lipgloss.StyleRanges(name, lipgloss.NewRange(start, end, m.MatchHighlightStyle))
+				name = lipgloss.StyleRanges(name, lipgloss.NewRange(start, end, m.styles.Completion.Match))
 			}
 
 			// Prepend type indicator icon
@@ -75,7 +75,7 @@ func (m Model) showCompletionsRender() string {
 					icon = m.FlagIcon
 				}
 				if icon != "" {
-					name = m.IconStyle.Render(icon) + " " + name
+					name = m.styles.Completion.Icon.Render(icon) + " " + name
 				}
 			}
 
@@ -96,7 +96,7 @@ func (m Model) showCompletionsRender() string {
 	for i := 0; i < len(completionTitles); i++ {
 		descText := truncateDescription(completionDescriptions[i], descMaxWidth)
 		if i != m.completionIndex {
-			descText = m.DescriptionStyle.Render(descText)
+			descText = m.styles.Completion.Description.Render(descText)
 		}
 
 		titleWidth := lipgloss.Width(completionTitles[i])
@@ -114,17 +114,17 @@ func (m Model) showCompletionsRender() string {
 		if i == m.completionIndex {
 			completionsRow = append(
 				completionsRow,
-				m.SelectedRowStyle.Render(rowText),
+				m.styles.Completion.SelectedRow.Render(rowText),
 			)
 		} else if i%2 == 0 {
 			completionsRow = append(
 				completionsRow,
-				m.AltRowStyle.Render(rowText),
+				m.styles.Completion.AltRow.Render(rowText),
 			)
 		} else {
 			completionsRow = append(
 				completionsRow,
-				m.RowStyle.Render(rowText),
+				m.styles.Completion.Row.Render(rowText),
 			)
 		}
 	}
@@ -166,18 +166,19 @@ func (m Model) showCompletionsRender() string {
 }
 
 func (m Model) getCompletionsStyle(startCompletionsIndex int, endCompletionsIndex int, rows int) lipgloss.Style {
+	border := m.styles.Completion.Border
 	if !m.ShowBorderScroll {
-		return m.CompletionsBorderStyle
+		return border
 	}
 
 	if startCompletionsIndex > 0 && endCompletionsIndex < rows {
-		return m.CompletionsBorderStyle.BorderTopForeground(scrollIndicatorColor).BorderBottomForeground(scrollIndicatorColor)
+		return border.BorderTopForeground(scrollIndicatorColor).BorderBottomForeground(scrollIndicatorColor)
 	} else if startCompletionsIndex > 0 {
-		return m.CompletionsBorderStyle.BorderTopForeground(scrollIndicatorColor)
+		return border.BorderTopForeground(scrollIndicatorColor)
 	} else if endCompletionsIndex < rows {
-		return m.CompletionsBorderStyle.BorderBottomForeground(scrollIndicatorColor)
+		return border.BorderBottomForeground(scrollIndicatorColor)
 	} else {
-		return m.CompletionsBorderStyle
+		return border
 	}
 }
 
@@ -278,9 +279,9 @@ func (m Model) renderScrollbar(height, totalItems, offset int) []string {
 	result := make([]string, height)
 	for i := range height {
 		if i >= thumbStart && i < thumbStart+thumbSize {
-			result[i] = m.ScrollbarThumbStyle.Render("\u2503")
+			result[i] = m.styles.Scrollbar.Thumb.Render("\u2503")
 		} else {
-			result[i] = m.ScrollbarTrackStyle.Render("\u2502")
+			result[i] = m.styles.Scrollbar.Track.Render("\u2502")
 		}
 	}
 	return result

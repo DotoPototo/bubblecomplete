@@ -6,7 +6,6 @@ import (
 
 	"charm.land/bubbles/v2/key"
 	"charm.land/bubbles/v2/textinput"
-	"charm.land/lipgloss/v2"
 )
 
 // MARK: Types and Vars
@@ -55,10 +54,6 @@ type Model struct {
 	Autotrim bool
 	// The base offset from the left, applied to the completions
 	CompletionsOffset int
-	// The text style for valid commands
-	ValidCommandStyle lipgloss.Style
-	// The text style for invalid commands
-	InvalidCommandStyle lipgloss.Style
 	// Whether to show different border styles to indicate scrolling
 	ShowBorderScroll bool
 	// Whether to show the horizontal scrollbar to indicate scrolling
@@ -67,22 +62,6 @@ type Model struct {
 	CompletionsPosition Position
 	// The number of rows to show in the completions
 	CompletionRows int
-	// The text style for the matched prefix in completion names
-	MatchHighlightStyle lipgloss.Style
-	// The style for the highlighted/selected completion row
-	SelectedRowStyle lipgloss.Style
-	// The style for odd completion rows
-	RowStyle lipgloss.Style
-	// The style for even completion rows
-	AltRowStyle lipgloss.Style
-	// The border style for the completions box
-	CompletionsBorderStyle lipgloss.Style
-	// The style applied to descriptions (dim)
-	DescriptionStyle lipgloss.Style
-	// The style for the vertical scrollbar thumb
-	ScrollbarThumbStyle lipgloss.Style
-	// The style for the vertical scrollbar track
-	ScrollbarTrackStyle lipgloss.Style
 	// Whether to show type indicator icons
 	ShowIcons bool
 	// The icon for command completions
@@ -91,8 +70,8 @@ type Model struct {
 	ArgumentIcon string
 	// The icon for flag completions
 	FlagIcon string
-	// The style for type icons
-	IconStyle lipgloss.Style
+
+	styles Styles
 }
 
 type Completion interface {
@@ -256,35 +235,35 @@ func New(commands []*Command, width int) (Model, error) {
 	input.KeyMap = inputKeyMap
 
 	return Model{
-		input:                  input,
-		Commands:               commands,
-		width:                  width,
-		completionIndex:        -1,
-		historyIndex:           -1,
-		HistoryLimit:           100,
-		Autotrim:               true,
-		IndentCompletions:      true,
-		CompletionsOffset:      0,
-		ValidCommandStyle:      lg.Foreground(validColor),
-		InvalidCommandStyle:    lg.Foreground(defaultTextColor),
-		ShowBorderScroll:       false,
-		ShowScrollbar:          false,
-		CompletionsPosition:    PositionBelow,
-		CompletionRows:         5,
-		MatchHighlightStyle:    lg.Bold(true).Foreground(accentColor),
-		SelectedRowStyle:       lg.Foreground(defaultTextColor).Background(accentBgColor).Bold(true),
-		RowStyle:               lg.Background(rowBgColor).Foreground(defaultTextColor),
-		AltRowStyle:            lg.Background(altRowBgColor).Foreground(defaultTextColor),
-		CompletionsBorderStyle: lg.Border(lipgloss.RoundedBorder()).BorderForeground(borderColor),
-		DescriptionStyle:       lg.Foreground(mutedTextColor),
-		ScrollbarThumbStyle:    lg.Foreground(accentColor),
-		ScrollbarTrackStyle:    lg.Foreground(borderColor),
-		ShowIcons:              false,
-		CommandIcon:            "\u203A",
-		ArgumentIcon:           "\u25C6",
-		FlagIcon:               "\u25C7",
-		IconStyle:              lg.Foreground(accentColor),
+		input:               input,
+		Commands:            commands,
+		width:               width,
+		completionIndex:     -1,
+		historyIndex:        -1,
+		HistoryLimit:        100,
+		Autotrim:            true,
+		IndentCompletions:   true,
+		CompletionsOffset:   0,
+		ShowBorderScroll:    false,
+		ShowScrollbar:       false,
+		CompletionsPosition: PositionBelow,
+		CompletionRows:      5,
+		ShowIcons:           false,
+		CommandIcon:         "\u203A",
+		ArgumentIcon:        "\u25C6",
+		FlagIcon:            "\u25C7",
+		styles:              DefaultStyles(),
 	}, nil
+}
+
+// Styles returns the current style set. Modify the returned value and pass it to SetStyles to apply changes.
+func (m Model) Styles() Styles {
+	return m.styles
+}
+
+// SetStyles replaces the component's styles.
+func (m *Model) SetStyles(s Styles) {
+	m.styles = s
 }
 
 // SetWidth sets the width of the model

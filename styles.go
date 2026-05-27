@@ -19,5 +19,57 @@ var (
 	validColor           = compat.AdaptiveColor{Light: lipgloss.Color("#40A02B"), Dark: lipgloss.Color("#A6E3A1")}
 )
 
-// Styles
 var lg = lipgloss.NewStyle()
+
+// InputStyles styles the text inside the input field based on validation state.
+type InputStyles struct {
+	Valid   lipgloss.Style
+	Invalid lipgloss.Style
+}
+
+// CompletionStyles styles the completion list rows, border, match highlight, descriptions and icons.
+type CompletionStyles struct {
+	Match       lipgloss.Style
+	SelectedRow lipgloss.Style
+	Row         lipgloss.Style
+	AltRow      lipgloss.Style
+	Border      lipgloss.Style
+	Description lipgloss.Style
+	Icon        lipgloss.Style
+}
+
+// ScrollbarStyles styles the vertical scrollbar thumb and track.
+type ScrollbarStyles struct {
+	Thumb lipgloss.Style
+	Track lipgloss.Style
+}
+
+// Styles bundles every lipgloss style the component renders with. Customize via Model.SetStyles.
+type Styles struct {
+	Input      InputStyles
+	Completion CompletionStyles
+	Scrollbar  ScrollbarStyles
+}
+
+// DefaultStyles returns the styles applied by New.
+func DefaultStyles() Styles {
+	return Styles{
+		Input: InputStyles{
+			Valid:   lg.Foreground(validColor),
+			Invalid: lg.Foreground(defaultTextColor),
+		},
+		Completion: CompletionStyles{
+			Match:       lg.Bold(true).Foreground(accentColor),
+			SelectedRow: lg.Foreground(defaultTextColor).Background(accentBgColor).Bold(true),
+			Row:         lg.Background(rowBgColor).Foreground(defaultTextColor),
+			AltRow:      lg.Background(altRowBgColor).Foreground(defaultTextColor),
+			Border:      lg.Border(lipgloss.RoundedBorder()).BorderForeground(borderColor),
+			Description: lg.Foreground(mutedTextColor),
+			Icon:        lg.Foreground(accentColor),
+		},
+		Scrollbar: ScrollbarStyles{
+			Thumb: lg.Foreground(accentColor),
+			Track: lg.Foreground(borderColor),
+		},
+	}
+}

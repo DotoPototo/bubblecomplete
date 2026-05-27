@@ -180,22 +180,31 @@ func (m model) View() tea.View {
 | CommandIcon  | Icon for command completions       | `›`     |
 | ArgumentIcon | Icon for argument completions      | `◆`     |
 | FlagIcon     | Icon for flag completions          | `◇`     |
-| IconStyle    | Lipgloss style for type icons      | (pink)  |
 
 #### Styles
 
-| Option                 | Description                                            | Default           |
-| ---------------------- | ------------------------------------------------------ | ----------------- |
-| ValidCommandStyle      | Lipgloss style for valid user input                    | (green)           |
-| InvalidCommandStyle    | Lipgloss style for invalid user input                  | (muted text)      |
-| MatchHighlightStyle    | Lipgloss style for the matched prefix in completions   | (bold pink)       |
-| SelectedRowStyle       | Lipgloss style for the selected completion row         | (bold, highlight) |
-| RowStyle               | Lipgloss style for odd completion rows                 | (subtle bg)       |
-| AltRowStyle            | Lipgloss style for even completion rows                | (alt subtle bg)   |
-| CompletionsBorderStyle | Lipgloss style for the completions border              | (rounded border)  |
-| DescriptionStyle       | Lipgloss style for completion descriptions             | (muted)           |
-| ScrollbarThumbStyle    | Lipgloss style for the scrollbar thumb                 | (pink)            |
-| ScrollbarTrackStyle    | Lipgloss style for the scrollbar track                 | (border color)    |
+Styles are grouped on a `Styles` struct accessed via `Styles()` / `SetStyles()`:
+
+```go
+s := bc.Styles()
+s.Input.Valid = lipgloss.NewStyle().Foreground(lipgloss.Color("10"))
+s.Completion.Match = lipgloss.NewStyle().Bold(true)
+bc.SetStyles(s)
+```
+
+| Field                    | Description                                          | Default           |
+| ------------------------ | ---------------------------------------------------- | ----------------- |
+| Input.Valid              | Style for valid user input                           | (green)           |
+| Input.Invalid            | Style for invalid user input                         | (muted text)      |
+| Completion.Match         | Style for the matched prefix in completions          | (bold pink)       |
+| Completion.SelectedRow   | Style for the selected completion row                | (bold, highlight) |
+| Completion.Row           | Style for odd completion rows                        | (subtle bg)       |
+| Completion.AltRow        | Style for even completion rows                       | (alt subtle bg)   |
+| Completion.Border        | Style for the completions border                     | (rounded border)  |
+| Completion.Description   | Style for completion descriptions                    | (muted)           |
+| Completion.Icon          | Style for type indicator icons                       | (pink)            |
+| Scrollbar.Thumb          | Style for the scrollbar thumb                        | (pink)            |
+| Scrollbar.Track          | Style for the scrollbar track                        | (border color)    |
 
 ## Roadmap
 

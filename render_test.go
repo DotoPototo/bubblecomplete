@@ -46,7 +46,7 @@ func TestMatchHighlightApplied(t *testing.T) {
 	// Render and verify the match highlight style appears around the matched prefix
 	output := m.Render()
 	// "co" should be styled with MatchHighlightStyle, "mmit" should not
-	styledCo := m.MatchHighlightStyle.Render("co")
+	styledCo := m.Styles().Completion.Match.Render("co")
 	if !strings.Contains(output, styledCo) {
 		t.Errorf("Expected styled 'co' (%q) in output, got: %q", styledCo, output)
 	}
@@ -72,7 +72,7 @@ func TestMatchHighlightLongFlag(t *testing.T) {
 
 	output := m.Render()
 	// The "--me" portion of "--message" should be highlighted with MatchHighlightStyle
-	styledMe := m.MatchHighlightStyle.Render("--me")
+	styledMe := m.Styles().Completion.Match.Render("--me")
 	if !strings.Contains(output, styledMe) {
 		t.Errorf("Expected styled '--me' (%q) in output, got: %q", styledMe, output)
 	}
@@ -95,7 +95,7 @@ func TestNoMatchHighlightWhenShowingAll(t *testing.T) {
 	// Rendered output should contain no match highlighting escapes
 	output := m.Render()
 	// With empty prefix, no completion name should have the MatchHighlightStyle applied
-	styledTest := m.MatchHighlightStyle.Render("x")
+	styledTest := m.Styles().Completion.Match.Render("x")
 	// Extract the ANSI prefix (everything before the content character)
 	highlightPrefix := styledTest[:len(styledTest)-len("x\033[0m")]
 	if strings.Contains(output, highlightPrefix) {
