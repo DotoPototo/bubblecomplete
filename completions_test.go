@@ -2,6 +2,7 @@ package bubblecomplete
 
 import (
 	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -432,4 +433,67 @@ func TestGetCompletionsMatchPrefix(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMatchingPolicy_CaseSensitivity(t *testing.T) {
+	cases := []struct {
+		name      string
+		input     string
+		wantNames []string
+	}{
+		{"commands lowercase matches", "gi", []string{"git"}},
+		{"commands uppercase does not match", "GI", nil},
+		{"long flags case-sensitive: lowercase matches", "cat --sh", []string{"--show-ends"}},
+		{"long flags case-sensitive: uppercase does not match", "cat --SH", nil},
+		{"PowerShell flags case-sensitive: matching case matches", "ps -FileD", []string{"-FileDirArg"}},
+		{"PowerShell flags case-sensitive: lowercase does not match", "ps -filed", nil},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			completions, _ := getCompletions(c.input, TestCommands)
+			got := completionNames(completions)
+			if !reflect.DeepEqual(got, c.wantNames) {
+				t.Errorf("got %v, want %v", got, c.wantNames)
+			}
+		})
+	}
+}
+
+func TestMatchingPolicy_DescriptionsExcluded(t *testing.T) {
+	// "Concatenate" appears only in cat's description, never in a name.
+	// Typing it must not surface any completion.
+	completions, _ := getCompletions("Concatenate", TestCommands)
+	if len(completions) != 0 {
+		t.Errorf("Expected description-only text to return no completions, got %d", len(completions))
+	}
+}
+
+func TestMatchingPolicy_FlagsSortAfterNonFlags(t *testing.T) {
+	// "cat " yields one positional arg ("File") and four flags; after the
+	// punctuation-last sort the positional must come first.
+	completions, _ := getCompletions("cat ", TestCommands)
+	sortCompletions(&completions)
+	names := completionNames(completions)
+	if len(names) < 2 {
+		t.Fatalf("expected at least 2 completions, got %v", names)
+	}
+	if names[0] != "File" {
+		t.Errorf("expected first completion to be the positional 'File', got %v", names)
+	}
+	for i, n := range names[1:] {
+		if !strings.HasPrefix(n, "-") {
+			t.Errorf("expected flags after the positional, got %q at index %d", n, i+1)
+		}
+	}
+}
+
+func completionNames(comps []Completion) []string {
+	if len(comps) == 0 {
+		return nil
+	}
+	out := make([]string, len(comps))
+	for i, c := range comps {
+		out[i] = c.getName()
+	}
+	return out
 }
