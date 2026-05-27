@@ -90,21 +90,24 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 // It creates the file if it doesn't exist. The directory of the file path must exist.
 // The file path must be a valid JSON file with a .json extension.
 func (m *Model) SetHistoryFilePath(path string) {
+	// Reset so Error() reflects the result of this call, not a prior failure.
+	m.err = nil
+
 	cleanPath := filepath.Clean(path)
 
 	file := filepath.Base(cleanPath)
 	if file == "" {
-		m.Err = errors.New("invalid history file path")
+		m.err = errors.New("invalid history file path")
 		return
 	}
 	if filepath.Ext(file) != ".json" {
-		m.Err = errors.New("history file must be a JSON file")
+		m.err = errors.New("history file must be a JSON file")
 		return
 	}
 
 	dir := filepath.Dir(cleanPath)
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
-		m.Err = err
+		m.err = err
 		return
 	}
 
@@ -114,22 +117,22 @@ func (m *Model) SetHistoryFilePath(path string) {
 	// pre-create with os.Create (which previously leaked its returned handle).
 	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
 		if err := m.saveHistoryToFile(); err != nil {
-			m.Err = err
+			m.err = err
 			return
 		}
 	}
 
 	if err := m.loadHistoryFromFile(); err != nil {
-		m.Err = err
+		m.err = err
 	}
 }
 
 // ClearHistory clears the command history. If a history file path is set, the
-// empty history is persisted to it; failures surface via Model.Err.
+// empty history is persisted to it; failures surface via Model.Error.
 func (m *Model) ClearHistory() {
 	m.History = []string{}
 	if m.historyFilePath != "" {
-		m.Err = m.saveHistoryToFile()
+		m.err = m.saveHistoryToFile()
 	}
 }
 
@@ -405,9 +408,8 @@ func (m Model) keyEnter() (Model, tea.Cmd) {
 		}
 	}
 	m = m.resetModel()
-	if err := m.saveHistoryToFile(); err != nil {
-		m.Err = err
-	}
+	// Direct assignment so a successful save clears any prior Error().
+	m.err = m.saveHistoryToFile()
 	m.input.SetSuggestions(m.History)
 
 	return m, func() tea.Msg {

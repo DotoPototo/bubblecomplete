@@ -79,8 +79,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() tea.View {
-	if m.bubblecomplete.Err != nil {
-		return tea.NewView(m.bubblecomplete.Err.Error())
+	if err := m.bubblecomplete.Error(); err != nil {
+		return tea.NewView(err.Error())
 	}
 
 	var text string

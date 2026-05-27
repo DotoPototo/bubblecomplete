@@ -46,7 +46,7 @@ type Model struct {
 
 	// ---- Other ----
 
-	Err    error
+	err    error
 	loaded bool
 	width  int
 
@@ -328,6 +328,13 @@ func (m *Model) applyInputValidationStyle() {
 // Value returns the current input value.
 func (m Model) Value() string {
 	return m.input.Value()
+}
+
+// Error returns the current component-level error (e.g., from history file
+// I/O), or nil if the last operation succeeded. This is distinct from
+// ValidationError, which reports errors about the typed input.
+func (m Model) Error() error {
+	return m.err
 }
 
 // ValidationError returns the validation error for the current input, or nil if the input is valid.

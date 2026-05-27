@@ -242,7 +242,7 @@ bc.SetKeyMap(k)
 - A `HistoryLimit` of zero or less disables history entirely.
 - Adjacent duplicates are suppressed: pressing enter twice on the same input only stores one entry.
 - Invalid commands are stored — history is "what the user submitted," not "what validated."
-- `WithHistoryFilePath(path)` (or `SetHistoryFilePath`) loads history from a JSON file on startup and saves atomically on each submit. Errors during load or save surface on `Model.Err`.
+- `WithHistoryFilePath(path)` (or `SetHistoryFilePath`) loads history from a JSON file on startup and saves atomically on each submit. Errors during load or save surface via `Model.Error()`.
 
 ### Filesystem Argument Validation
 

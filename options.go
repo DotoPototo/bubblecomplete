@@ -23,7 +23,7 @@ func WithHistoryLimit(n int) Option {
 }
 
 // WithHistoryFilePath enables history persistence to the given JSON file.
-// Loads any existing history. Errors are surfaced via Model.Err.
+// Loads any existing history. Errors are surfaced via Model.Error.
 func WithHistoryFilePath(path string) Option {
 	return func(m *Model) { m.SetHistoryFilePath(path) }
 }

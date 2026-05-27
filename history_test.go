@@ -53,16 +53,16 @@ func TestHistory_FileSaveSurvivesEnter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Err != nil {
-		t.Fatalf("unexpected Err after construction: %v", m.Err)
+	if m.Error() != nil {
+		t.Fatalf("unexpected Err after construction: %v", m.Error())
 	}
 
 	for _, c := range []string{"git status", "git stash list"} {
 		m = simulateTyping(t, m, c)
 		m, _ = pressEnter(t, m)
 	}
-	if m.Err != nil {
-		t.Fatalf("unexpected Err after enters: %v", m.Err)
+	if m.Error() != nil {
+		t.Fatalf("unexpected Err after enters: %v", m.Error())
 	}
 
 	raw, err := os.ReadFile(path)
@@ -97,8 +97,8 @@ func TestHistory_OptionOrderDoesNotMatter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Err != nil {
-		t.Fatalf("unexpected Err: %v", m.Err)
+	if m.Error() != nil {
+		t.Fatalf("unexpected Err: %v", m.Error())
 	}
 	if len(m.History) != 2 {
 		t.Errorf("limit-after-load: history length = %d, want 2 (%v)", len(m.History), m.History)
@@ -132,8 +132,8 @@ func TestHistory_LoadCapsAtHistoryLimit(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Err != nil {
-		t.Fatalf("unexpected Err: %v", m.Err)
+	if m.Error() != nil {
+		t.Fatalf("unexpected Err: %v", m.Error())
 	}
 	if len(m.History) != 2 {
 		t.Errorf("expected capped to 2, got %d (%v)", len(m.History), m.History)
@@ -154,8 +154,8 @@ func TestHistory_LoadEmptyFileIsNotError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if m.Err != nil {
-		t.Errorf("expected no Err for empty file, got %v", m.Err)
+	if m.Error() != nil {
+		t.Errorf("expected no Err for empty file, got %v", m.Error())
 	}
 	if len(m.History) != 0 {
 		t.Errorf("expected empty history, got %v", m.History)
@@ -180,8 +180,40 @@ func TestHistory_SaveFailureSurfacesAsErr(t *testing.T) {
 	m = simulateTyping(t, m, "git status")
 	m, _ = pressEnter(t, m)
 
-	if m.Err == nil {
-		t.Error("expected save failure to surface as m.Err, got nil")
+	if m.Error() == nil {
+		t.Error("expected save failure to surface as m.Error(), got nil")
+	}
+}
+
+func TestError_ClearsAfterSuccessfulOperation(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "history.json")
+
+	m, err := New(TestCommands, 100, WithHistoryFilePath(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Trigger a save failure by making the dir read-only.
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Skip("cannot chmod tmpdir read-only:", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+
+	m = simulateTyping(t, m, "git status")
+	m, _ = pressEnter(t, m)
+	if m.Error() == nil {
+		t.Fatal("expected non-nil Error after failed save")
+	}
+
+	// Restore writability and submit a successful command.
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, "git status")
+	m, _ = pressEnter(t, m)
+	if m.Error() != nil {
+		t.Errorf("Error should clear after a successful save, got: %v", m.Error())
 	}
 }
 
@@ -195,8 +227,8 @@ func TestHistory_AtomicSaveLeavesNoTempFile(t *testing.T) {
 	}
 	m = simulateTyping(t, m, "git status")
 	m, _ = pressEnter(t, m)
-	if m.Err != nil {
-		t.Fatal(m.Err)
+	if m.Error() != nil {
+		t.Fatal(m.Error())
 	}
 
 	entries, err := os.ReadDir(dir)
