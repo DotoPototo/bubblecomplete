@@ -9,7 +9,6 @@ import (
 	"github.com/charmbracelet/x/ansi"
 )
 
-var minCompletionsSize = 60
 
 // MARK: Public Functions
 
@@ -263,12 +262,11 @@ func (m Model) calculateCompletionsOffset(completions string) int {
 	return offset
 }
 
+// getCompletionsWidth caps the completion box at the terminal width minus a
+// small border reserve. Narrow terminals are respected — we never return a
+// width larger than the visible area.
 func (m Model) getCompletionsWidth(maxLineLength int) int {
-	maxTermWidth := m.width - 8
-	if maxTermWidth < minCompletionsSize {
-		maxTermWidth = minCompletionsSize
-	}
-
+	maxTermWidth := max(1, m.width-8)
 	if maxLineLength > maxTermWidth {
 		return maxTermWidth
 	}

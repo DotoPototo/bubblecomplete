@@ -1,6 +1,7 @@
 package bubblecomplete
 
 import (
+	"fmt"
 	"testing"
 
 	"charm.land/bubbles/v2/key"
@@ -496,6 +497,69 @@ func TestWithCompletionRows_ClampsToOne(t *testing.T) {
 		if m.CompletionRows != 1 {
 			t.Errorf("WithCompletionRows(%d) yielded %d, want 1", n, m.CompletionRows)
 		}
+	}
+}
+
+func TestNew_ClampsWidth(t *testing.T) {
+	for _, w := range []int{-10, 0} {
+		m, err := New(TestCommands, w)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.width != 1 {
+			t.Errorf("width clamped from %d to %d, want 1", w, m.width)
+		}
+	}
+}
+
+func TestSetWidth_Clamps(t *testing.T) {
+	m := newTestModel(t)
+	m.SetWidth(-5)
+	if m.width != 1 {
+		t.Errorf("SetWidth(-5) produced width=%d, want 1", m.width)
+	}
+}
+
+func TestRender_AcrossWidths(t *testing.T) {
+	// Renders must not panic across the width spectrum, including degenerate
+	// cases that previously divided by zero in calculateCompletionsOffset.
+	for _, w := range []int{1, 5, 20, 60, 68, 200} {
+		t.Run(fmt.Sprintf("width=%d", w), func(t *testing.T) {
+			m, err := New(TestCommands, w)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m = simulateTyping(t, m, "git c")
+			_ = m.Render()
+		})
+	}
+}
+
+func TestGetCompletionsWidth_RespectsNarrowTerminal(t *testing.T) {
+	cases := []struct {
+		name          string
+		terminalWidth int
+		maxLineLength int
+		want          int
+	}{
+		{"wide terminal, narrow content", 200, 30, 30},
+		{"wide terminal, overflowing content", 200, 300, 192},
+		{"narrow terminal must not return 60", 20, 100, 12},
+		{"border exceeds width", 8, 100, 1},
+		{"single cell terminal", 1, 100, 1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m, err := New(TestCommands, c.terminalWidth)
+			if err != nil {
+				t.Fatal(err)
+			}
+			got := m.getCompletionsWidth(c.maxLineLength)
+			if got != c.want {
+				t.Errorf("width=%d, maxLine=%d: got %d, want %d",
+					c.terminalWidth, c.maxLineLength, got, c.want)
+			}
+		})
 	}
 }
 

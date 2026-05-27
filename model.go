@@ -223,6 +223,10 @@ func New(commands []*Command, width int, opts ...Option) (Model, error) {
 		}
 	}
 
+	if width < 1 {
+		width = 1
+	}
+
 	input := textinput.New()
 	input.Focus()
 	input.CharLimit = 1000
@@ -309,10 +313,14 @@ func (m *Model) SetKeyMap(k KeyMap) {
 	m.keymap = k
 }
 
-// SetWidth sets the width of the model
+// SetWidth sets the width of the model.
 //
-// This is used to calculate the offset for the completions and when text should be wrapped
+// This is used to calculate the offset for the completions and when text
+// should be wrapped. Values less than 1 are clamped to 1.
 func (m *Model) SetWidth(width int) {
+	if width < 1 {
+		width = 1
+	}
 	m.width = width
 	m.input.SetWidth(width)
 }
