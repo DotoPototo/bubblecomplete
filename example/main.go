@@ -41,7 +41,6 @@ func initialModel() tea.Model {
 	)
 	if err != nil {
 		log.Fatal(err)
-		os.Exit(1)
 	}
 
 	m := model{
@@ -102,30 +101,40 @@ func (m model) View() tea.View {
 }
 
 func main() {
-	f, e := os.Create("cpu.prof")
-	if e != nil {
-		log.Fatal(e)
+	if os.Getenv("BUBBLECOMPLETE_PROFILE") == "1" {
+		cpu, err := os.Create("cpu.prof")
+		if err != nil {
+			log.Fatal(err)
+		}
+		pprof.StartCPUProfile(cpu)
+		// Defers run LIFO; write snapshots after CPU profiling has stopped.
+		defer writeSnapshotProfiles()
+		defer pprof.StopCPUProfile()
 	}
-	pprof.StartCPUProfile(f)
-	defer pprof.StopCPUProfile()
 
 	p := tea.NewProgram(initialModel())
 	if _, err := p.Run(); err != nil {
 		fmt.Printf("Error: %v", err)
 		os.Exit(1)
 	}
+}
 
-	fMem, er := os.Create("mem.prof")
-	if er != nil {
-		log.Fatal(er)
-	}
-	pprof.WriteHeapProfile(fMem)
-	fMem.Close()
-
-	fGoroutine, err := os.Create("goroutine.prof")
+func writeSnapshotProfiles() {
+	mem, err := os.Create("mem.prof")
 	if err != nil {
 		log.Fatal(err)
 	}
-	pprof.Lookup("goroutine").WriteTo(fGoroutine, 0)
-	fGoroutine.Close()
+	defer mem.Close()
+	if err := pprof.WriteHeapProfile(mem); err != nil {
+		log.Fatal(err)
+	}
+
+	goroutines, err := os.Create("goroutine.prof")
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer goroutines.Close()
+	if err := pprof.Lookup("goroutine").WriteTo(goroutines, 0); err != nil {
+		log.Fatal(err)
+	}
 }
