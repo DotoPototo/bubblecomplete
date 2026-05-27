@@ -34,16 +34,18 @@ The command structure expects the following:
 command [subcommands] [flags] [positionalArguments]
 ```
 
-- A command can have multiple subcommands or positional arguments, and flags
-  > Git can have multiple sub commands such as `git commit`, `git stash` and `git status`
-- A command can have subcommands _or_ positional arguments, but not both.
-  > i.e. the subcommand `stash` in `git stash` has more subcommands like `git stash pop`, `git stash apply`, etc. but the subcommand `push` in `git push` has positional arguments like `git push origin main`
-- Any command or subcommand can have flags.
-  > Git can have a flag such as `--version` or a subcommand such as `git commit -m "message"`
-- Any command or subcommand can have both positional arguments and flags.
-  > Cat expects the positional argument for the file and then flags `cat file.txt -n`
-- The order of positional arguments is important
-  > `cp file.txt destination` is different from `cp destination file.txt`
+- A command has **either** subcommands **or** positional arguments — never both.
+  > `git stash` has subcommands (`pop`, `apply`, `drop`, …); `git push` has positional arguments (`origin main`).
+- Subcommands can be nested arbitrarily deep.
+  > `git stash pop` is a subcommand of `stash`, which is a subcommand of `git`.
+- Any command or subcommand can also have flags, in any combination with positional arguments.
+  > `cat file.txt -n` has both a positional argument and a flag.
+- The order of positional arguments matters.
+  > `cp file.txt destination` is not the same as `cp destination file.txt`.
+- Flags marked `Persistent: true` are inherited by every subcommand of the command they're declared on.
+  > A `--help` flag on `git` is also available as `git stash --help`.
+
+These rules are enforced by `Command.Validate()`, which `New` calls on every supplied command. Building a `Model` with conflicting subcommands and positional arguments, duplicate flag aliases, or invalid argument types returns an error.
 
 #### Setup
 
@@ -85,7 +87,7 @@ var commands = []*bubblecomplete.Command{
 | ------------------- | -------------------------------------------------------------------------------------- | -------------------------------------- |
 | Command             | The command name                                                                       | `string`                               |
 | Description         | A description of the command                                                           | `string`                               |
-| Subcommands         | A slice of `bubblecomplete.Command` structs representing subcommands                   | `[]*bubblecomplete.Command`            |
+| SubCommands         | A slice of `bubblecomplete.Command` structs representing subcommands                   | `[]*bubblecomplete.Command`            |
 | PositionalArguments | A slice of `bubblecomplete.PositionalArgument` structs representing required arguments | `[]*bubblecomplete.PositionalArgument` |
 | Flags               | A slice of `bubblecomplete.Flag` structs representing flags                            | `[]*bubblecomplete.Flag`               |
 
@@ -104,7 +106,7 @@ var commands = []*bubblecomplete.Command{
 | ----------- | ---------------------------------------------------------------------------------- | ----------------------------- |
 | ShortFlag   | The short flag identifier i.e. `-v`                                                | `string`                      |
 | LongFlag    | The long flag identifier i.e. `--verbose`                                          | `string`                      |
-| PsFlag      | PowerShell style flag i.e. `-verbose` - not compatible with ShortFlag and LongFlag | `string`                      |
+| PsFlag      | PowerShell-style flag, e.g. `-Verbose` (two or more characters; mutually exclusive with ShortFlag and LongFlag on the same Flag) | `string` |
 | Description | A description of the flag                                                          | `string`                      |
 | Type        | The type of argument the flag expects                                              | `bubblecomplete.ArgumentType` |
 | Persistent  | A persistent flag is available to all subcommands of the command                   | `bool`                        |
@@ -234,11 +236,23 @@ bc.SetKeyMap(k)
 | HistoryPrev      | Walk back through command history          | `up`                 |
 | HistoryNext      | Walk forward through command history       | `down`               |
 
+### History
+
+- The newest command is at `History[0]`. Trimming keeps the newest `HistoryLimit` entries.
+- A `HistoryLimit` of zero or less disables history entirely.
+- Adjacent duplicates are suppressed: pressing enter twice on the same input only stores one entry.
+- Invalid commands are stored — history is "what the user submitted," not "what validated."
+- `WithHistoryFilePath(path)` (or `SetHistoryFilePath`) loads history from a JSON file on startup and saves atomically on each submit. Errors during load or save surface on `Model.Err`.
+
+### Filesystem Argument Validation
+
+`FileArgument`, `DirArgument`, and `FileDirArgument` validate the value against the real filesystem using `os.Stat`. Paths are resolved relative to the process's working directory. Quoted strings are unquoted before the stat check, so `cat "my file.txt"` works as long as the file actually exists. A configurable working-directory / filesystem abstraction is on the roadmap.
+
 ## Roadmap
 
 - [x] Update to bubbletea v2
 - [x] Support PowerShell style flags
-- [ ] Support PowerShell aliases for flags i.e. `-v` for `-verbose`
+- [ ] Support PowerShell aliases for flags i.e. `-v` for `-Verbose`
 - [ ] Autocomplete for filepaths
   - [ ] Underlined white if part of a valid path
   - [ ] Green if full valid path
@@ -254,3 +268,7 @@ bc.SetKeyMap(k)
 ### Colors
 
 Bubblecomplete (and Bubble Tea applications in general) work best with a terminal that supports 24-bit color. If you're using a terminal that doesn't support 24-bit color, you may see some odd colors. If you're using a terminal that supports 24-bit color, ensure that it's enabled in your terminal emulator, tmux config (if you're using tmux) etc and that your `$TERM` environment variable is set to a value that supports 24-bit color (such as `xterm-256color`) and your `$COLORTERM` environment variable is set to `truecolor`.
+
+### Concurrency
+
+`Model` is not goroutine-safe. This is intentional: Bubble Tea runs `Update` on a single goroutine, and all model state changes should happen there. Background work should return `tea.Msg` values that the next `Update` consumes; never mutate `Model` from another goroutine.
