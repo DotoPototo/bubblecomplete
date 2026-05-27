@@ -233,6 +233,95 @@ func TestCompletionBoxWidth(t *testing.T) {
 	}
 }
 
+func TestCalculateCompletionsOffset(t *testing.T) {
+	// Cases pin the offset math to known values so layout regressions surface.
+	// Assumes the default textinput prompt "> " (width 2).
+	cases := []struct {
+		name              string
+		width             int
+		input             string
+		completions       string
+		completionsOffset int
+		indent            bool
+		want              int
+	}{
+		{
+			name: "indent disabled returns configured offset",
+			width: 80, input: "git", completionsOffset: 5, indent: false,
+			want: 5,
+		},
+		{
+			name: "empty input returns zero",
+			width: 80, input: "", indent: true,
+			want: 0,
+		},
+		{
+			name: "mid-token: aligns to start of active token after prompt",
+			width: 80, input: "git c", indent: true,
+			want: 2 + len("git "),
+		},
+		{
+			name: "trailing space: aligns to end of input after prompt",
+			width: 80, input: "git ", indent: true,
+			want: 2 + len("git "),
+		},
+		{
+			name: "nonzero completionsOffset adds on top of base",
+			width: 80, input: "git c", completionsOffset: 3, indent: true,
+			want: 2 + len("git ") + 3,
+		},
+		{
+			name: "wraps modulo terminal width on long input",
+			width: 10, input: "git commit ", indent: true,
+			// "> git commit " is 13 cells; the new token starts at col (13 % 10) = 3 on the wrapped line
+			want: 3,
+		},
+		{
+			name: "quoted argument with spaces aligns at start of quoted token",
+			width: 80, input: `cat "my file"`, indent: true,
+			// LastIndex of `"my file"` is byte 4 → trimmedInput "cat " (4 cells)
+			want: 2 + 4,
+		},
+		{
+			name: "wide characters before active token use display width",
+			width: 80, input: "日本 file", indent: true,
+			// "日本 " is 5 cells (2+2+1)
+			want: 2 + 5,
+		},
+		{
+			name: "overflow shifts box left so it stays on-screen",
+			// base offset would be 2 + len("git ") = 6; completions is 30 cells
+			// 6 + 30 = 36 > 32: overflow branch trips, offset = 32 - 30 - 2 = 0
+			width: 32, input: "git c", completions: strings.Repeat("x", 30), indent: true,
+			want: 0,
+		},
+		{
+			name: "tiny terminal overflow currently yields negative offset",
+			// Documents current behavior — offset can go negative when completions
+			// exceed the terminal width by more than the prompt + token can absorb.
+			width: 10, input: "g", completions: strings.Repeat("x", 15), indent: true,
+			want: 10 - 15 - 2,
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m, err := New(TestCommands, c.width,
+				WithCompletionsOffset(c.completionsOffset),
+				WithIndentCompletions(c.indent),
+			)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m.input.SetValue(c.input)
+			got := m.calculateCompletionsOffset(c.completions)
+			if got != c.want {
+				t.Errorf("input=%q width=%d completions=%dcells: got %d, want %d",
+					c.input, c.width, lipgloss.Width(c.completions), got, c.want)
+			}
+		})
+	}
+}
+
 func TestVisibleWindow(t *testing.T) {
 	cases := []struct {
 		name                  string

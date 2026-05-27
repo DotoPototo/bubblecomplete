@@ -241,17 +241,20 @@ func (m Model) calculateCompletionsOffset(completions string) int {
 		return 0
 	}
 
-	offset := 0
+	// The textinput prompt ("> " by default) shifts every column right by its
+	// display width. Without it the wrap modulo lands two cells short on lines
+	// that started with the prompt.
+	promptWidth := lipgloss.Width(m.input.Prompt)
 
-	// TODO: Offset is slightly off on each new line
+	offset := 0
 
 	// If we're about to start typing a new part, set the offset to the end of the string
 	if strings.HasSuffix(input, " ") && (!strings.Contains(parts[len(parts)-1], " ") || stringEndsInQuote(parts[len(parts)-1])) {
-		offset = (lipgloss.Width(input) % m.width)
+		offset = (promptWidth + lipgloss.Width(input)) % m.width
 	} else {
 		// If we're typing, set the offset to the end of the last part
 		trimmedInput := input[:strings.LastIndex(input, parts[len(parts)-1])]
-		offset = lipgloss.Width(trimmedInput) % m.width
+		offset = (promptWidth + lipgloss.Width(trimmedInput)) % m.width
 	}
 
 	offset += m.CompletionsOffset
