@@ -6,6 +6,7 @@ import (
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
+	"github.com/charmbracelet/x/ansi"
 )
 
 var minCompletionsSize = 60
@@ -79,24 +80,46 @@ func (m Model) iconFor(k completionKind) string {
 }
 
 // completionBoxWidth returns the column widths used to lay out the completion box.
-// titleWidth is the title column budget (max name + padding + optional icon space).
+// titleWidth is the title column budget (max name + padding + widest icon if enabled).
 // lineWidth is titleWidth + max description width.
-func completionBoxWidth(rows []completionRow, showIcons bool) (titleWidth, lineWidth int) {
+func (m Model) completionBoxWidth(rows []completionRow) (titleWidth, lineWidth int) {
 	const titlePadding = 3
 	maxTitle, maxDesc := 0, 0
 	for _, r := range rows {
-		if len(r.Name) > maxTitle {
-			maxTitle = len(r.Name)
+		if w := lipgloss.Width(r.Name); w > maxTitle {
+			maxTitle = w
 		}
-		if len(r.Description) > maxDesc {
-			maxDesc = len(r.Description)
+		if w := lipgloss.Width(r.Description); w > maxDesc {
+			maxDesc = w
 		}
 	}
 	titleWidth = maxTitle + titlePadding
-	if showIcons {
-		titleWidth += 2
+	if m.ShowIcons {
+		if iconW := m.maxIconWidth(rows); iconW > 0 {
+			titleWidth += iconW + 1
+		}
 	}
 	return titleWidth, titleWidth + maxDesc
+}
+
+// maxIconWidth returns the largest display width across icons used by the given rows.
+// Returns 0 if no row's kind has a non-empty icon.
+func (m Model) maxIconWidth(rows []completionRow) int {
+	seen := map[completionKind]bool{}
+	for _, r := range rows {
+		seen[r.Kind] = true
+	}
+	maxW := 0
+	for kind := range seen {
+		icon := m.iconFor(kind)
+		if icon == "" {
+			continue
+		}
+		if w := lipgloss.Width(icon); w > maxW {
+			maxW = w
+		}
+	}
+	return maxW
 }
 
 // visibleWindow returns the [start, end) slice indices of rows to display given
@@ -122,7 +145,7 @@ func (m Model) showCompletionsRender() string {
 	}
 
 	rows := m.completionRows()
-	titleWidth, lineWidth := completionBoxWidth(rows, m.ShowIcons)
+	titleWidth, lineWidth := m.completionBoxWidth(rows)
 	completionsWidth := m.getCompletionsWidth(lineWidth)
 
 	rendered := make([]string, len(rows))
@@ -279,11 +302,10 @@ func truncateDescription(s string, maxWidth int) string {
 	if maxWidth <= 0 {
 		return ""
 	}
-	if utf8.RuneCountInString(s) <= maxWidth {
+	if lipgloss.Width(s) <= maxWidth {
 		return s
 	}
-	runes := []rune(s)
-	return string(runes[:maxWidth-1]) + "…"
+	return ansi.Truncate(s, maxWidth, "…")
 }
 
 func (m Model) renderScrollbar(height, totalItems, offset int) []string {

@@ -3,6 +3,8 @@ package bubblecomplete
 import (
 	"strings"
 	"testing"
+
+	"charm.land/lipgloss/v2"
 )
 
 func TestStringEndsInQuote(t *testing.T) {
@@ -133,13 +135,86 @@ func TestCompletionRows_KindsForEachConcreteType(t *testing.T) {
 	}
 }
 
+func TestCompletionBoxWidth_AccountsForDisplayWidth(t *testing.T) {
+	// CJK characters and emoji occupy two cells; accented characters one cell
+	// despite being multi-byte.
+	rows := []completionRow{
+		{Name: "café", Description: "naïve"},
+		{Name: "日本語", Description: "🐛 bug"},
+	}
+
+	m, err := New(TestCommands, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	titleWidth, _ := m.completionBoxWidth(rows)
+	// "日本語" is 3 wide chars = 6 cells, plus 3 padding = 9
+	if titleWidth != 6+3 {
+		t.Errorf("titleWidth = %d, want 9 (6 cells + 3 padding)", titleWidth)
+	}
+}
+
+func TestCompletionBoxWidth_AccountsForWideIcons(t *testing.T) {
+	rows := []completionRow{
+		{Name: "git", Kind: commandKind},
+		{Name: "file", Kind: argumentKind},
+	}
+
+	m, err := New(TestCommands, 100,
+		WithIcons(true),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.CommandIcon = "🐛" // 2 cells
+	m.ArgumentIcon = "›" // 1 cell
+
+	titleWidth, _ := m.completionBoxWidth(rows)
+	// max name = "file" (4 cells), padding 3, widest icon = 🐛 (2 cells) + 1 space = 3
+	// expected: 4 + 3 + 3 = 10
+	if titleWidth != 4+3+3 {
+		t.Errorf("titleWidth = %d, want 10 (4 + 3 padding + 3 icon)", titleWidth)
+	}
+}
+
+func TestTruncateDescription_WideChars(t *testing.T) {
+	cases := []struct {
+		name     string
+		input    string
+		maxWidth int
+		wantW    int
+	}{
+		{"ascii fits", "hello", 10, 5},
+		{"ascii truncates", "hello world", 5, 5},
+		{"accented fits", "café", 5, 4},
+		{"cjk truncates", "日本語テスト", 6, 5}, // each CJK char is 2 cells; fits "日本…" (4+1=5) within 6
+		{"emoji truncates", "🐛 a bug", 4, 4},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			out := truncateDescription(c.input, c.maxWidth)
+			if w := lipgloss.Width(out); w > c.maxWidth {
+				t.Errorf("output width %d exceeds maxWidth %d: %q", w, c.maxWidth, out)
+			}
+			if w := lipgloss.Width(out); w != c.wantW {
+				t.Errorf("output width = %d, want %d (%q)", w, c.wantW, out)
+			}
+		})
+	}
+}
+
 func TestCompletionBoxWidth(t *testing.T) {
 	rows := []completionRow{
 		{Name: "short", Description: "tiny"},
 		{Name: "longer-name", Description: "a longer description"},
 	}
 
-	titleWidth, lineWidth := completionBoxWidth(rows, false)
+	m, err := New(TestCommands, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	titleWidth, lineWidth := m.completionBoxWidth(rows)
 	if titleWidth != len("longer-name")+3 {
 		t.Errorf("titleWidth = %d, want %d", titleWidth, len("longer-name")+3)
 	}
@@ -147,7 +222,12 @@ func TestCompletionBoxWidth(t *testing.T) {
 		t.Errorf("lineWidth = %d, want %d", lineWidth, titleWidth+len("a longer description"))
 	}
 
-	titleWithIcons, _ := completionBoxWidth(rows, true)
+	mIcons, err := New(TestCommands, 100, WithIcons(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	titleWithIcons, _ := mIcons.completionBoxWidth(rows)
+	// Default icons are 1 cell wide, so titleWidth grows by 1 + 1 space = 2.
 	if titleWithIcons != titleWidth+2 {
 		t.Errorf("titleWidth with icons = %d, want %d", titleWithIcons, titleWidth+2)
 	}
