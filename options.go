@@ -25,7 +25,11 @@ func WithWidth(w int) Option {
 }
 
 // WithCompletionRows sets the number of completion rows shown before scrolling.
+// Values less than 1 are clamped to 1.
 func WithCompletionRows(n int) Option {
+	if n < 1 {
+		n = 1
+	}
 	return func(m *Model) { m.CompletionRows = n }
 }
 

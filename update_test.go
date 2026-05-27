@@ -487,6 +487,32 @@ func TestInputTextStyle_TracksValidation(t *testing.T) {
 	}
 }
 
+func TestWithCompletionRows_ClampsToOne(t *testing.T) {
+	for _, n := range []int{-5, 0} {
+		m, err := New(TestCommands, 80, WithCompletionRows(n))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if m.CompletionRows != 1 {
+			t.Errorf("WithCompletionRows(%d) yielded %d, want 1", n, m.CompletionRows)
+		}
+	}
+}
+
+func TestRender_HandlesZeroCompletionRows(t *testing.T) {
+	m := newTestModel(t)
+	m.CompletionRows = 0
+	m.ShowScrollbar = true
+	m = simulateTyping(t, m, "git c")
+
+	if len(m.completions) == 0 {
+		t.Fatal("expected completions for 'git c'")
+	}
+
+	// Must not panic and must not silently render an empty completion box.
+	_ = m.Render()
+}
+
 func TestNew_AppliesOptions(t *testing.T) {
 	customKM := DefaultKeyMap()
 	customKM.Submit = key.NewBinding(key.WithKeys("ctrl+s"))

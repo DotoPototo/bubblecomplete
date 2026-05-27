@@ -103,6 +103,83 @@ func TestNoMatchHighlightWhenShowingAll(t *testing.T) {
 	}
 }
 
+func TestCompletionRows_KindsForEachConcreteType(t *testing.T) {
+	m, err := New(TestCommands, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	cases := []struct {
+		input string
+		kind  completionKind
+	}{
+		{"g", commandKind},
+		{"git commit -", flagKind},
+		{"cat ", argumentKind},
+	}
+
+	for _, c := range cases {
+		t.Run(c.input, func(t *testing.T) {
+			m.input.SetValue(c.input)
+			m.completions, m.matchPrefix = m.getCompletions()
+			if len(m.completions) == 0 {
+				t.Fatalf("no completions for %q", c.input)
+			}
+			rows := m.completionRows()
+			if rows[0].Kind != c.kind {
+				t.Errorf("Kind = %d, want %d", rows[0].Kind, c.kind)
+			}
+		})
+	}
+}
+
+func TestCompletionBoxWidth(t *testing.T) {
+	rows := []completionRow{
+		{Name: "short", Description: "tiny"},
+		{Name: "longer-name", Description: "a longer description"},
+	}
+
+	titleWidth, lineWidth := completionBoxWidth(rows, false)
+	if titleWidth != len("longer-name")+3 {
+		t.Errorf("titleWidth = %d, want %d", titleWidth, len("longer-name")+3)
+	}
+	if lineWidth != titleWidth+len("a longer description") {
+		t.Errorf("lineWidth = %d, want %d", lineWidth, titleWidth+len("a longer description"))
+	}
+
+	titleWithIcons, _ := completionBoxWidth(rows, true)
+	if titleWithIcons != titleWidth+2 {
+		t.Errorf("titleWidth with icons = %d, want %d", titleWithIcons, titleWidth+2)
+	}
+}
+
+func TestVisibleWindow(t *testing.T) {
+	cases := []struct {
+		name                  string
+		selected, total, rows int
+		wantStart, wantEnd    int
+	}{
+		{"no selection", -1, 10, 5, 0, 5},
+		{"first row selected", 0, 10, 5, 0, 5},
+		{"middle row selected", 4, 10, 5, 0, 5},
+		{"row 5 scrolls window", 5, 10, 5, 1, 6},
+		{"last row selected", 9, 10, 5, 5, 10},
+		{"rows larger than total", 0, 3, 5, 0, 3},
+		{"zero rows", 0, 10, 0, 0, 0},
+		{"zero total", 0, 0, 5, 0, 0},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			start, end := visibleWindow(c.selected, c.total, c.rows)
+			if start != c.wantStart || end != c.wantEnd {
+				t.Errorf("visibleWindow(%d, %d, %d) = (%d, %d), want (%d, %d)",
+					c.selected, c.total, c.rows, start, end, c.wantStart, c.wantEnd)
+			}
+		})
+	}
+}
+
 func TestFindMatchRange(t *testing.T) {
 	cases := []struct {
 		name          string
