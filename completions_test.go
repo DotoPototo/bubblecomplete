@@ -54,6 +54,31 @@ func TestContainsLongFlag(t *testing.T) {
 	}
 }
 
+func TestContainsLongFlag_EndOfInput(t *testing.T) {
+	// Token-based detection must recognize a long flag that ends the input
+	// with no trailing space. The previous string-substring approach missed
+	// this because it required " --flag " with spaces on both sides.
+	cases := []struct {
+		command string
+		flag    string
+		want    bool
+	}{
+		{"git commit --amend", "--amend", true},
+		{"git commit --amend ", "--amend", true},
+		{"git commit --amend=true", "--amend", true},
+		{"git commit '--amend'", "--amend", false}, // quoted, must not match
+		{"git status", "--amend", false},
+	}
+	for _, c := range cases {
+		t.Run(c.command, func(t *testing.T) {
+			got := containsLongFlag(c.command, c.flag)
+			if got != c.want {
+				t.Errorf("containsLongFlag(%q, %q) = %t, want %t", c.command, c.flag, got, c.want)
+			}
+		})
+	}
+}
+
 func TestContainsShortFlag(t *testing.T) {
 	command := "This is a test command -f -m \"Added flag -x\" --fsomething '-p' -yz"
 
@@ -150,50 +175,6 @@ func TestStringEndsInQuoteWithoutEquals(t *testing.T) {
 	result = stringEndsInQuoteWithoutEquals(input)
 	if result != expected {
 		t.Errorf("stringEndsInQuoteWithoutEquals(%q) == %t, expected %t", input, result, expected)
-	}
-}
-
-func TestRemoveQuotedStrings(t *testing.T) {
-	input := "git stash pop"
-	expected := "git stash pop"
-	result := removeQuotedStrings(input)
-	if result != expected {
-		t.Errorf("removeQuotedStrings(%q) == %q, expected %q", input, result, expected)
-	}
-
-	input = "git commit -m \"hello\" --amend"
-	expected = "git commit -m \"\" --amend"
-	result = removeQuotedStrings(input)
-	if result != expected {
-		t.Errorf("removeQuotedStrings(%q) == %q, expected %q", input, result, expected)
-	}
-
-	input = "cp \"/home/me/file.txt\" \"/home/me\""
-	expected = "cp \"\" \"\""
-	result = removeQuotedStrings(input)
-	if result != expected {
-		t.Errorf("removeQuotedStrings(%q) == %q, expected %q", input, result, expected)
-	}
-
-	input = "cat 'my/file'"
-	expected = "cat ''"
-	result = removeQuotedStrings(input)
-	if result != expected {
-		t.Errorf("removeQuotedStrings(%q) == %q, expected %q", input, result, expected)
-	}
-
-	input = "git commit -m \"some quote' --amend"
-	expected = "git commit -m \"some quote' --amend"
-	result = removeQuotedStrings(input)
-	if result != expected {
-		t.Errorf("removeQuotedStrings(%q) == %q, expected %q", input, result, expected)
-	}
-
-	input = "cat '\"'\" --help"
-	expected = "cat ''\" --help"
-	result = removeQuotedStrings(input)
-	if result != expected {
-		t.Errorf("removeQuotedStrings(%q) == %q, expected %q", input, result, expected)
 	}
 }
 

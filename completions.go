@@ -457,8 +457,10 @@ func splitPositionArgsAndFlags(argParts []string, command *Command) ([]string, [
 	return positionalArgs, flags
 }
 
+// containsFlag returns true if the input contains an unquoted reference to the
+// given flag. Token-aware: quoted segments do not contribute matches and
+// end-of-input flags are detected correctly.
 func containsFlag(command string, flag *Flag) bool {
-	command = removeQuotedStrings(command)
 	if flag.PsFlag != "" && containsPowerShellFlag(command, flag.PsFlag) {
 		return true
 	}
@@ -471,43 +473,10 @@ func containsFlag(command string, flag *Flag) bool {
 	return false
 }
 
-// removeQuotedStrings removes the contents between quotes from a string
-//
-// For example, the input `-m "Hello, world!"` would return `-m ""`
-func removeQuotedStrings(input string) string {
-	var result []rune
-	var hold []rune
-	var quoteChar rune
-	inQuotes := false
-
-	for _, char := range input {
-		if inQuotes {
-			if char == quoteChar {
-				inQuotes = false
-				result = append(result, char)
-			} else {
-				hold = append(hold, char)
-			}
-		} else {
-			if char == '\'' || char == '"' {
-				inQuotes = true
-				quoteChar = char
-				result = append(result, char)
-				hold = []rune{}
-			} else {
-				result = append(result, char)
-			}
-		}
-	}
-
-	// If the quotes were not closed properly, return the original input
-	if inQuotes {
-		result = append(result, hold...)
-	}
-
-	return string(result)
-}
-
+// containsShortFlag returns true if any unquoted short-flag-shaped token in
+// command contains the single-character body of flag. Combined short flags
+// like "-xyz" match each of their characters; tokens whose body is not purely
+// ASCII letters are ignored (matches the historical detection rule).
 func containsShortFlag(command string, flag string) bool {
 	if len(flag) > 0 && flag[0] == '-' {
 		flag = flag[1:]
@@ -517,25 +486,14 @@ func containsShortFlag(command string, flag string) bool {
 	}
 	flagChar := flag[0]
 
-	// Split on whitespace and check each token
-	for _, token := range strings.Fields(command) {
-		// Must start with '-' but not '--'
-		if !strings.HasPrefix(token, "-") || strings.HasPrefix(token, "--") {
+	for _, tok := range tokenize(command) {
+		if tok.Quoted {
 			continue
 		}
-		// The token after '-' must be purely alphabetical (matching the original regex [a-zA-Z]*)
-		body := token[1:]
-		allAlpha := true
-		for i := 0; i < len(body); i++ {
-			if !((body[i] >= 'a' && body[i] <= 'z') || (body[i] >= 'A' && body[i] <= 'Z')) {
-				allAlpha = false
-				break
-			}
-		}
-		if !allAlpha || len(body) == 0 {
+		body, ok := shortFlagBody(tok.Unquoted)
+		if !ok {
 			continue
 		}
-		// Check if the flag character appears in the body
 		for i := 0; i < len(body); i++ {
 			if body[i] == flagChar {
 				return true
@@ -545,19 +503,21 @@ func containsShortFlag(command string, flag string) bool {
 	return false
 }
 
+// containsLongFlag returns true if command contains an unquoted token that
+// equals flag, or flag immediately followed by "=" (long-flag value form).
 func containsLongFlag(command string, flag string) bool {
-	if command == flag {
-		return true
+	for _, tok := range tokenize(command) {
+		if tok.Quoted {
+			continue
+		}
+		text := tok.Unquoted
+		if text == flag {
+			return true
+		}
+		if i := strings.Index(text, "="); i != -1 && text[:i] == flag {
+			return true
+		}
 	}
-
-	if strings.Contains(command, fmt.Sprintf(" %s ", flag)) {
-		return true
-	}
-
-	if strings.Contains(command, fmt.Sprintf("%s=", flag)) {
-		return true
-	}
-
 	return false
 }
 
@@ -569,4 +529,21 @@ func containsPowerShellFlag(command string, flag string) bool {
 
 	// Otherwise check for the long flag pattern
 	return containsLongFlag(command, flag)
+}
+
+// shortFlagBody returns the body of a short-flag-shaped token (e.g., "xyz" for
+// "-xyz") if the token is a candidate for short-flag detection. Tokens that
+// start with "--" or have a non-alpha body are rejected.
+func shortFlagBody(text string) (string, bool) {
+	if !strings.HasPrefix(text, "-") || strings.HasPrefix(text, "--") || len(text) < 2 {
+		return "", false
+	}
+	body := text[1:]
+	for i := 0; i < len(body); i++ {
+		c := body[i]
+		if !(c >= 'a' && c <= 'z') && !(c >= 'A' && c <= 'Z') {
+			return "", false
+		}
+	}
+	return body, true
 }
