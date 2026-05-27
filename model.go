@@ -268,6 +268,16 @@ func (m *Model) SetStyles(s Styles) {
 	m.styles = s
 }
 
+// Value returns the current input value.
+func (m Model) Value() string {
+	return m.input.Value()
+}
+
+// ValidationError returns the validation error for the current input, or nil if the input is valid.
+func (m Model) ValidationError() error {
+	return m.validationErr
+}
+
 // KeyMap returns the current key bindings. Modify the returned value and pass it to SetKeyMap to apply changes.
 func (m Model) KeyMap() KeyMap {
 	return m.keymap

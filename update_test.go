@@ -408,6 +408,50 @@ func TestEnter_ResetsModelState(t *testing.T) {
 	}
 }
 
+func TestValueAndValidationError(t *testing.T) {
+	m := newTestModel(t)
+
+	if m.Value() != "" {
+		t.Errorf("Expected empty Value(), got %q", m.Value())
+	}
+	if m.ValidationError() != nil {
+		t.Errorf("Expected nil ValidationError(), got %v", m.ValidationError())
+	}
+
+	m = simulateTyping(t, m, "git status")
+	if m.Value() != "git status" {
+		t.Errorf("Expected Value() %q, got %q", "git status", m.Value())
+	}
+	if m.ValidationError() != nil {
+		t.Errorf("Expected nil ValidationError() for valid input, got %v", m.ValidationError())
+	}
+
+	m = newTestModel(t)
+	m = simulateTyping(t, m, "git stash a")
+	if m.ValidationError() == nil {
+		t.Error("Expected non-nil ValidationError() for partial subcommand")
+	}
+
+	// Backspacing back to empty input should clear the validation error.
+	for range "git stash a" {
+		m = simulateKey(t, m, tea.KeyBackspace)
+	}
+	if m.Value() != "" {
+		t.Fatalf("Expected empty input after backspaces, got %q", m.Value())
+	}
+	if m.ValidationError() != nil {
+		t.Errorf("Expected nil ValidationError() after clearing input, got %v", m.ValidationError())
+	}
+
+	// Submitting any command resets the model; subsequent ValidationError must be nil.
+	m = newTestModel(t)
+	m = simulateTyping(t, m, "git stash xyz")
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyEnter})
+	if m.ValidationError() != nil {
+		t.Errorf("Expected nil ValidationError() after submit reset, got %v", m.ValidationError())
+	}
+}
+
 func TestSetKeyMap_RebindSubmit(t *testing.T) {
 	m := newTestModel(t)
 
