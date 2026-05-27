@@ -12,10 +12,15 @@ import (
 
 // MARK: Public Functions
 
+// View returns the component as a tea.View so [Model] satisfies the Bubble
+// Tea v2 model contract directly. Prefer [Model.Render] when composing the
+// component into a larger view.
 func (m Model) View() tea.View {
 	return tea.NewView(m.Render())
 }
 
+// Render returns the component as a styled string. Use this when composing
+// Bubblecomplete with other content inside the host model's View.
 func (m Model) Render() string {
 	var output string
 	if m.historyIndex != -1 {

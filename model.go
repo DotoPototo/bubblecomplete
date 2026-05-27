@@ -12,6 +12,10 @@ import (
 
 // MARK: Types and Vars
 
+// Model is the Bubble Tea component that drives input, completion, validation,
+// and history. Construct with [New]; embed in a host model and forward
+// messages to [Model.Update]. Compose into a host view with [Model.View] or
+// [Model.Render].
 type Model struct {
 	// ---- Input ----
 
@@ -79,16 +83,23 @@ type Model struct {
 	keymap KeyMap
 }
 
+// Completion is the internal interface every completable entity implements.
+// All methods are unexported; the interface exists to unify rendering across
+// [Command], [PositionalArgument], and [Flag] and is not an extension point
+// for external packages.
 type Completion interface {
 	getName() string
 	getDescription() string
 	getAutocomplete() string
 }
 
+// Position selects whether the completion list renders above or below the input.
 type Position int
 
 const (
+	// PositionAbove renders the completion list above the input.
 	PositionAbove Position = iota
+	// PositionBelow renders the completion list below the input.
 	PositionBelow
 )
 
@@ -103,6 +114,9 @@ func (p Position) String() string {
 	}
 }
 
+// Command defines a top-level command or subcommand. A command must have
+// either SubCommands or PositionalArguments, never both. Validation rules are
+// enforced by [Command.Validate], which [New] runs on every command.
 type Command struct {
 	Command             string
 	Description         string
@@ -123,6 +137,10 @@ func (c Command) getAutocomplete() string {
 	return c.Command
 }
 
+// Argument is the internal interface satisfied by [PositionalArgument] and
+// [Flag] so the validator can reason about value types uniformly. Like
+// [Completion], the methods are unexported and external implementations are
+// not supported.
 type Argument interface {
 	getName() string
 	getDescription() string
@@ -142,6 +160,9 @@ const (
 	FileDirArgument ArgumentType = "filedir"
 )
 
+// PositionalArgument is an ordered, non-flag value a command accepts after its
+// command word. Required arguments must be supplied; optional arguments may be
+// omitted. Order matters at parse time.
 type PositionalArgument struct {
 	Name        string
 	Description string
@@ -172,6 +193,11 @@ func (a PositionalArgument) getType() ArgumentType {
 	return a.Type
 }
 
+// Flag describes a single command-line flag. At least one of ShortFlag,
+// LongFlag, or PsFlag must be set. PsFlag is the PowerShell-style single-dash
+// flag form (e.g. "-Verbose") and is mutually exclusive with ShortFlag and
+// LongFlag on the same Flag. Persistent flags propagate to every subcommand
+// of the command they're declared on.
 type Flag struct {
 	ShortFlag   string
 	LongFlag    string
@@ -331,11 +357,16 @@ func (m *Model) SetWidth(width int) {
 	m.input.SetWidth(width)
 }
 
-// Set the input placeholder text
+// SetPlaceholder sets the input placeholder text shown when the input is empty.
 func (m *Model) SetPlaceholder(placeholder string) {
 	m.input.Placeholder = placeholder
 }
 
+// Validate checks structural invariants of the command: non-empty name, no
+// internal whitespace, no SubCommands+PositionalArguments together, no
+// duplicate sibling names or flag aliases, and recursively validates every
+// flag, positional argument, and subcommand. New calls this on every command
+// it's given.
 func (c *Command) Validate() error {
 	if c == nil {
 		return fmt.Errorf("commands cannot be nil")
@@ -401,6 +432,7 @@ func (c *Command) Validate() error {
 	return nil
 }
 
+// Validate checks the positional argument has a name and a known ArgumentType.
 func (p *PositionalArgument) Validate() error {
 	if p == nil {
 		return fmt.Errorf("positional arguments cannot be nil")
@@ -417,6 +449,10 @@ func (p *PositionalArgument) Validate() error {
 	return nil
 }
 
+// Validate checks the flag has at least one form set, that each form is
+// well-shaped (short flags are a single ASCII character, long flags start with
+// "--", PsFlag bodies are two-or-more runes and exclusive with the other
+// forms), and that Type is a known ArgumentType.
 func (f *Flag) Validate() error {
 	if f == nil {
 		return fmt.Errorf("flags cannot be nil")

@@ -14,6 +14,10 @@ import (
 
 // MARK: Types and Vars
 
+// SelectedCommandMsg is the message [Model.Update] returns when the user
+// submits a command via the Submit binding (Enter by default). Command is the
+// raw submitted string (trimmed if Autotrim is true); Err is the result of
+// validating it — non-nil for invalid input.
 type SelectedCommandMsg struct {
 	Command string
 	Err     error
@@ -25,6 +29,9 @@ type historyFileJson struct {
 
 // MARK: Public Functions
 
+// Update advances the component in response to a Bubble Tea message. Host
+// models should forward every received message here and use the returned
+// model and command.
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
@@ -117,9 +124,8 @@ func (m *Model) SetHistoryFilePath(path string) {
 	}
 }
 
-// ClearHistory clears the command history from all previous commands.
-//
-// If the history file path is set, it also clears the history on file.
+// ClearHistory clears the command history. If a history file path is set, the
+// empty history is persisted to it; failures surface via Model.Err.
 func (m *Model) ClearHistory() {
 	m.History = []string{}
 	if m.historyFilePath != "" {

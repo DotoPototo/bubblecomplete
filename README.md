@@ -258,7 +258,7 @@ bc.SetKeyMap(k)
   - [ ] Green if full valid path
   - [ ] Red if invalid path
 - [ ] Option to have flags disable other flags if they're mutually exclusive
-- [ ] Improved documentation comments for public functions and structs
+- [x] Improved documentation comments for public functions and structs
 - [x] Wider range of tests for more critical functions, for improved maintainability
 - [x] Option to not show the descriptions of the commands, flags etc
 - [x] More exposed color options for the completion list, scrolling etc
