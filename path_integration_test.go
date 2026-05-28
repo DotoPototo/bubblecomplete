@@ -185,10 +185,11 @@ func TestTabAccept_EqualsFormRegressionGuard(t *testing.T) {
 		t.Fatalf("expected report.txt candidate: %v", pathCandidateNames(m.pathState.candidates))
 	}
 
-	// Tab to accept the first candidate.
+	// Tab to accept the first candidate. File completions append a
+	// trailing space (bash-style "this token is done").
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 
-	want := "find . --path=" + filepath.Join(dir, "report.txt")
+	want := "find . --path=" + filepath.Join(dir, "report.txt") + " "
 	if got := m.input.Value(); got != want {
 		t.Errorf("after Tab: %q, want %q", got, want)
 	}
@@ -203,7 +204,8 @@ func TestTabAccept_PositionalFile(t *testing.T) {
 
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 
-	want := "cat " + filepath.Join(dir, "alpha.txt")
+	// File completions get a trailing space.
+	want := "cat " + filepath.Join(dir, "alpha.txt") + " "
 	if got := m.input.Value(); got != want {
 		t.Errorf("Tab insertion = %q, want %q", got, want)
 	}
@@ -233,7 +235,8 @@ func TestTabAccept_QuotedPositional(t *testing.T) {
 
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 
-	want := `cat "` + filepath.Join(dir, "alpha.txt") + `"`
+	// File completions get a trailing space AFTER the closing quote.
+	want := `cat "` + filepath.Join(dir, "alpha.txt") + `" `
 	if got := m.input.Value(); got != want {
 		t.Errorf("Tab insertion = %q, want %q", got, want)
 	}
@@ -254,8 +257,8 @@ func TestTabAccept_TildeExpansion(t *testing.T) {
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 
 	// userPrefix is preserved verbatim, so the result keeps "~/", not the
-	// expanded $HOME path.
-	want := "cat ~/report.txt"
+	// expanded $HOME path. File completion appends a trailing space.
+	want := "cat ~/report.txt "
 	if got := m.input.Value(); got != want {
 		t.Errorf("Tab insertion = %q, want %q", got, want)
 	}
@@ -436,8 +439,9 @@ func TestTabAutoAcceptDrillsIntoUniqueDir(t *testing.T) {
 	}
 
 	// Second Tab: single child auto-accepts again, drilling to the file.
+	// File completion appends a trailing space.
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
-	wantAfterSecond := "cat " + filepath.Join(dir, "uniquedir", "child.txt")
+	wantAfterSecond := "cat " + filepath.Join(dir, "uniquedir", "child.txt") + " "
 	if got := m.input.Value(); got != wantAfterSecond {
 		t.Errorf("after second Tab: got %q, want %q", got, wantAfterSecond)
 	}

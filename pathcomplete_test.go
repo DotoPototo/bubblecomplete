@@ -512,26 +512,29 @@ func TestGenerateCandidates_InsertionStrings(t *testing.T) {
 	c := newDirCache()
 	entry := c.read(dir)
 
-	// Equals-form unquoted: tokenPrefix="--path=", openingQuote=0.
+	// Equals-form unquoted: tokenPrefix="--path=", openingQuote=0. File
+	// completions get a trailing space.
 	cands := generateCandidates(FileArgument, "--path=", "", 0, "alpha", entry, 10, false, dir)
-	if len(cands) == 0 || cands[0].insertion != "--path=alpha.txt" {
-		t.Errorf("equals-form insertion = %v, want --path=alpha.txt", cands)
+	if len(cands) == 0 || cands[0].insertion != "--path=alpha.txt " {
+		t.Errorf("equals-form insertion = %v, want --path=alpha.txt (with trailing space)", cands)
 	}
 
 	// Equals-form quoted: tokenPrefix=`--path="`, openingQuote='"'.
 	cands = generateCandidates(FileArgument, `--path="`, "", '"', "alpha", entry, 10, false, dir)
-	if len(cands) == 0 || cands[0].insertion != `--path="alpha.txt"` {
-		t.Errorf("equals-quoted insertion = %v, want --path=\"alpha.txt\"", cands)
+	if len(cands) == 0 || cands[0].insertion != `--path="alpha.txt" ` {
+		t.Errorf("equals-quoted insertion = %v, want --path=\"alpha.txt\" (with trailing space)", cands)
 	}
 
 	// Positional quoted with userPrefix preserved.
 	cands = generateCandidates(FileArgument, `"`, "~/", '"', "alpha", entry, 10, false, dir)
-	if len(cands) == 0 || cands[0].insertion != `"~/alpha.txt"` {
-		t.Errorf("quoted positional insertion = %v, want \"~/alpha.txt\"", cands)
+	if len(cands) == 0 || cands[0].insertion != `"~/alpha.txt" ` {
+		t.Errorf("quoted positional insertion = %v, want \"~/alpha.txt\" (with trailing space)", cands)
 	}
 }
 
 func TestBuildCompletion_Insertion(t *testing.T) {
+	// File completions append a trailing space (bash-style "token done");
+	// directory completions deliberately omit it so the next Tab drills in.
 	cases := []struct {
 		name        string
 		basename    string
@@ -541,24 +544,70 @@ func TestBuildCompletion_Insertion(t *testing.T) {
 		opener      rune
 		want        string
 	}{
-		{"plain file", "report.md", false, "", "~/", 0, "~/report.md"},
+		{"plain file", "report.md", false, "", "~/", 0, "~/report.md "},
 		{"plain dir", "Documents", true, "", "~/", 0, "~/Documents/"},
-		{"quoted file", "report.md", false, `"`, "~/", '"', `"~/report.md"`},
+		{"quoted file", "report.md", false, `"`, "~/", '"', `"~/report.md" `},
 		{"quoted dir", "Documents", true, `"`, "~/", '"', `"~/Documents/"`},
-		{"equals-form file", "report.md", false, "--path=", "~/", 0, "--path=~/report.md"},
+		{"equals-form file", "report.md", false, "--path=", "~/", 0, "--path=~/report.md "},
 		{"equals-form dir", "Documents", true, "--path=", "~/", 0, "--path=~/Documents/"},
 		{"equals-quoted", "Documents", true, `--path="`, "~/", '"', `--path="~/Documents/"`},
-		{"auto-quote file with space", "My Doc.txt", false, "", "~/", 0, `"~/My Doc.txt"`},
+		{"auto-quote file with space", "My Doc.txt", false, "", "~/", 0, `"~/My Doc.txt" `},
 		{"auto-quote dir with space", "My Documents", true, "", "~/", 0, `"~/My Documents/"`},
 		{"auto-quote equals-form", "My Documents", true, "--path=", "~/", 0, `--path="~/My Documents/"`},
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
-			got := buildCompletion(tc.basename, tc.isDir, tc.tokenPrefix, tc.userPrefix, tc.opener)
+			got := buildCompletion(tc.basename, tc.isDir, false, tc.tokenPrefix, tc.userPrefix, tc.opener)
 			if got.insertion != tc.want {
 				t.Errorf("insertion = %q, want %q", got.insertion, tc.want)
 			}
 		})
+	}
+}
+
+// TestGenerateCandidates_SymlinkDescription locks in the wasSymlink
+// plumbing end-to-end: generateCandidates resolves a symlink via stat and
+// surfaces "symlink → file" / "symlink → dir" in the description, not just
+// the resolved kind. The buildCompletion unit test covers the formatting;
+// this exercises the full pipeline including the original-kind capture
+// before stat resolution rewrites it.
+func TestGenerateCandidates_SymlinkDescription(t *testing.T) {
+	dir := makeTestDir(t)
+	c := newDirCache()
+	entry := c.read(dir)
+
+	cands := generateCandidates(FileArgument, "", "", 0, "link", entry, 50, false, dir)
+
+	var alphaDesc, dirDesc string
+	for _, candidate := range cands {
+		switch candidate.displayName {
+		case "link_alpha":
+			alphaDesc = candidate.description
+		case "link_dir/":
+			dirDesc = candidate.description
+		}
+	}
+	if alphaDesc != "symlink → file" {
+		t.Errorf("link_alpha description = %q, want %q", alphaDesc, "symlink → file")
+	}
+	if dirDesc != "symlink → dir" {
+		t.Errorf("link_dir/ description = %q, want %q", dirDesc, "symlink → dir")
+	}
+}
+
+func TestBuildCompletion_SymlinkDescription(t *testing.T) {
+	got := buildCompletion("link_to_file", false, true, "", "", 0)
+	if got.description != "symlink → file" {
+		t.Errorf("symlink-to-file description = %q, want %q", got.description, "symlink → file")
+	}
+	got = buildCompletion("link_to_dir", true, true, "", "", 0)
+	if got.description != "symlink → dir" {
+		t.Errorf("symlink-to-dir description = %q, want %q", got.description, "symlink → dir")
+	}
+	// Non-symlink keeps the plain description.
+	got = buildCompletion("regular.txt", false, false, "", "", 0)
+	if got.description != "file" {
+		t.Errorf("regular-file description = %q, want %q", got.description, "file")
 	}
 }
 

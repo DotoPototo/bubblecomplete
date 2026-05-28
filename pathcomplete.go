@@ -336,8 +336,8 @@ func prefixMatch(entry *dirCacheEntry, base string) bool {
 // re-sorted dirs-first, case-fold alphabetic, then truncated to limit.
 //
 // Symlink target kinds are resolved via [os.Stat] for entries that survive
-// the prefix and hidden filters; a per-pass cap ([maxSymlinkResolutions])
-// bounds the worst-case stat count.
+// the prefix and hidden filters; [statBudget] bounds the worst-case stat
+// count per pass.
 func generateCandidates(
 	kind ArgumentType,
 	tokenPrefix, userPrefix string,
@@ -356,8 +356,9 @@ func generateCandidates(
 	}
 
 	type prelim struct {
-		name  string
-		isDir bool
+		name      string
+		isDir     bool
+		isSymlink bool // original DirEntry kind was kindSymlink (description hint)
 	}
 
 	caseInsensitive := caseInsensitiveFS()
@@ -374,6 +375,7 @@ func generateCandidates(
 		}
 
 		k := entry.kinds[i]
+		wasSymlink := k == kindSymlink
 		if k == kindSymlink || k == kindUnknown {
 			if statsRemaining <= 0 {
 				continue // budget exhausted; drop
@@ -396,7 +398,7 @@ func generateCandidates(
 		if !includeKind(kind, k) {
 			continue
 		}
-		survivors = append(survivors, prelim{name: name, isDir: k == kindDir})
+		survivors = append(survivors, prelim{name: name, isDir: k == kindDir, isSymlink: wasSymlink})
 	}
 
 	// Dirs first, then case-fold alphabetic within each group.
@@ -413,7 +415,7 @@ func generateCandidates(
 
 	out := make([]pathCompletion, len(survivors))
 	for i, s := range survivors {
-		out[i] = buildCompletion(s.name, s.isDir, tokenPrefix, userPrefix, openingQuote)
+		out[i] = buildCompletion(s.name, s.isDir, s.isSymlink, tokenPrefix, userPrefix, openingQuote)
 	}
 	return out
 }
@@ -453,11 +455,20 @@ func includeKind(arg ArgumentType, k entryKind) bool {
 //     uniformly for files and directories. The opener slots between any
 //     tokenPrefix (e.g. "--path=") and the userPrefix.
 //
+// File completions append a trailing space to the insertion — bash-style
+// "this token is done, move on." Directories deliberately omit the space
+// so the next Tab can drill into the dir's children. Autotrim (default
+// on) strips the trailing space at submit time.
+//
+// When isSymlink is true (the original DirEntry was a symlink, regardless
+// of its target kind), the description carries "symlink → file/dir" so
+// the user can see that the entry isn't a regular file/directory.
+//
 // Known limitation: filenames containing literal quote characters (" or ')
 // are inserted verbatim, which the tokenizer cannot re-parse as a single
 // token. Such filenames are vanishingly rare in practice and documented as
 // out of scope for v1.
-func buildCompletion(name string, isDir bool, tokenPrefix, userPrefix string, openingQuote rune) pathCompletion {
+func buildCompletion(name string, isDir, isSymlink bool, tokenPrefix, userPrefix string, openingQuote rune) pathCompletion {
 	displayName := name
 	if isDir {
 		displayName += "/"
@@ -478,10 +489,17 @@ func buildCompletion(name string, isDir bool, tokenPrefix, userPrefix string, op
 	if opener != 0 {
 		insertion += string(opener)
 	}
+	if !isDir {
+		insertion += " "
+	}
 
-	description := "file"
+	kindLabel := "file"
 	if isDir {
-		description = "dir"
+		kindLabel = "dir"
+	}
+	description := kindLabel
+	if isSymlink {
+		description = "symlink → " + kindLabel
 	}
 	return pathCompletion{
 		displayName: displayName,
