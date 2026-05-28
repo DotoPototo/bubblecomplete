@@ -616,6 +616,168 @@ func TestRender_WholeInputNotInvalidForPartialPathNotFound(t *testing.T) {
 	}
 }
 
+// TestHistoryNav_RefreshesPathState verifies that pulling a historic value
+// via Up arrow triggers the input-changed branch and refreshes pathState
+// against the historic path. Without this, the overlay would still
+// reflect whatever was on screen before Up — typically nothing for a
+// fresh model.
+func TestHistoryNav_RefreshesPathState(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
+	historic := "cat " + filepath.Join(dir, "foo.txt")
+
+	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Seed history manually; the integration here is the Up → SetValue →
+	// input-changed branch chain, not the submit-saves-history path.
+	m.History = []string{historic}
+
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyUp})
+
+	if m.input.Value() != historic {
+		t.Fatalf("after Up: input %q, want historic %q", m.input.Value(), historic)
+	}
+	if !m.pathState.active {
+		t.Errorf("pathState should be active after history nav loaded a path")
+	}
+	if m.pathState.validity != pathValid {
+		t.Errorf("historic path resolves to a real file → expected pathValid, got %d", m.pathState.validity)
+	}
+}
+
+// TestPsFlagWithFileArgument exercises the PowerShell-style flag form
+// (`-Path value` and `-Path=value`) carrying a FileArgument. Both code
+// paths in activeFileArgument (Case 1 equals-form, Case 2 space-separated)
+// branch on LongFlag OR PsFlag — these tests confirm the PsFlag branch
+// works end-to-end, not just the LongFlag side that the rest of the suite
+// already exercises.
+func TestPsFlagWithFileArgument(t *testing.T) {
+	psCmd := &Command{
+		Command: "ps",
+		PositionalArguments: []*PositionalArgument{
+			{Name: "Cmd", Type: StringArgument, Required: true},
+		},
+		Flags: []*Flag{
+			{PsFlag: "-Path", Type: FileArgument},
+		},
+	}
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "alpha.txt"))
+
+	t.Run("equals-form", func(t *testing.T) {
+		m, err := New([]*Command{psCmd}, 500, WithFilesystemCompletions(true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m = simulateTyping(t, m, "ps run -Path="+filepath.Join(dir, "alph"))
+		if !m.pathState.active {
+			t.Fatal("expected pathState active for -Path=<partial>")
+		}
+		if m.pathState.kind != FileArgument {
+			t.Errorf("kind = %v, want FileArgument", m.pathState.kind)
+		}
+		if !pathCandidateNames(m.pathState.candidates).has("alpha.txt") {
+			t.Errorf("expected alpha.txt candidate, got %v", pathCandidateNames(m.pathState.candidates))
+		}
+	})
+
+	t.Run("space-separated", func(t *testing.T) {
+		m, err := New([]*Command{psCmd}, 500, WithFilesystemCompletions(true))
+		if err != nil {
+			t.Fatal(err)
+		}
+		m = simulateTyping(t, m, "ps run -Path "+filepath.Join(dir, "alph"))
+		if !m.pathState.active {
+			t.Fatal("expected pathState active for -Path <partial>")
+		}
+		if m.pathState.kind != FileArgument {
+			t.Errorf("kind = %v, want FileArgument", m.pathState.kind)
+		}
+		if !pathCandidateNames(m.pathState.candidates).has("alpha.txt") {
+			t.Errorf("expected alpha.txt candidate, got %v", pathCandidateNames(m.pathState.candidates))
+		}
+	})
+}
+
+// TestKeyRight_DrillDownAfterCyclingDir is the explicit accept-and-recompute
+// flow for a path candidate. With two matching dirs, Tab enters cycling,
+// Right accepts the cycled candidate AND triggers a recompute, then the
+// next Tab cycles among the accepted dir's children. The Tab → Right →
+// Tab pattern is the natural drill-down for a host that maps the accept
+// key to Right.
+func TestKeyRight_DrillDownAfterCyclingDir(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdir(t, filepath.Join(dir, "doc1"))
+	mustWriteFile(t, filepath.Join(dir, "doc1", "child.txt"))
+	mustMkdir(t, filepath.Join(dir, "doc2"))
+
+	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "doc"))
+
+	// Tab enters cycling on the first dir candidate.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.completionHolder == "" {
+		t.Fatal("setup: expected Tab to enter cycling state (2 dir candidates)")
+	}
+	cycledValue := m.input.Value()
+
+	// Right accepts the cycled candidate and exits cycling — completionHolder
+	// clears, input-changed branch fires, recompute populates child candidates.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyRight})
+	if m.completionHolder != "" {
+		t.Errorf("Right should have cleared completionHolder, got %q", m.completionHolder)
+	}
+	if m.input.Value() != cycledValue {
+		t.Errorf("Right should not change input value: was %q, now %q", cycledValue, m.input.Value())
+	}
+	if !pathCandidateNames(m.pathState.candidates).has("child.txt") {
+		t.Fatalf("expected child.txt in candidates after Right-accept of doc1/; got %v",
+			pathCandidateNames(m.pathState.candidates))
+	}
+
+	// Next Tab drills into the single child (auto-accept on single match).
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	want := "cat " + filepath.Join(dir, "doc1", "child.txt") + " "
+	if got := m.input.Value(); got != want {
+		t.Errorf("after drill-down Tab: %q, want %q", got, want)
+	}
+}
+
+// TestRuntimeToggle_FilesystemCompletions verifies the documented behaviour
+// for direct field mutation: changes to FilesystemCompletions take effect
+// on the NEXT input change, not in place. The field is public for parity
+// with other Model knobs, but pathState is not refreshed eagerly when a
+// host flips the flag — the host must produce an input event (typing,
+// backspace, etc.) to trigger a recompute.
+func TestRuntimeToggle_FilesystemCompletions(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
+
+	m := newPathTestModel(t, false)
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "fo"))
+	if m.pathState.active {
+		t.Fatal("setup: feature disabled, pathState should be inactive")
+	}
+
+	// Toggle on directly — no input event yet, so pathState stays stale.
+	m.FilesystemCompletions = true
+	if m.pathState.active {
+		t.Errorf("toggling FilesystemCompletions should NOT refresh pathState in place")
+	}
+
+	// Type one more character → input-changed branch fires → recompute
+	// runs with the toggle now on → pathState becomes active.
+	m = simulateTyping(t, m, "o")
+	if !m.pathState.active {
+		t.Errorf("after next input event, pathState should be active (feature now on)")
+	}
+}
+
 // pathCandidateNames is a small helper for set-style assertions.
 type pathCandidateNames []pathCompletion
 

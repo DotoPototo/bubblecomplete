@@ -491,7 +491,23 @@ func splitPositionArgsAndFlags(argParts []string, command *Command, globalFlags 
 // matching flag — validation enforces that only the last char in a combined
 // group may be non-bool (and therefore value-taking), so attributing the
 // token to that flag is consistent with how the command would actually parse.
+//
+// PsFlag and LongFlag matches (exact-token OR equals-form, since
+// containsLongFlag / containsPowerShellFlag also recognise "--flag=value"
+// and "-Path=value") are checked BEFORE the combined-short-flag heuristic.
+// A multi-letter PsFlag like "-Path" is indistinguishable token-shape-wise
+// from a combined short flag "-Path" (the body is all ASCII letters,
+// length > 1), so the combined-short-flag branch must not preempt a real
+// PsFlag match.
 func findMatchingFlag(arg string, effectiveFlags []*Flag) *Flag {
+	for _, f := range effectiveFlags {
+		if f.PsFlag != "" && containsPowerShellFlag(arg, f.PsFlag) {
+			return f
+		}
+		if f.LongFlag != "" && containsLongFlag(arg, f.LongFlag) {
+			return f
+		}
+	}
 	if isCombinedShortFlag(arg) {
 		lastChar := "-" + arg[len(arg)-1:]
 		for _, f := range effectiveFlags {
