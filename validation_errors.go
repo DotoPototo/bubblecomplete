@@ -20,7 +20,10 @@ const (
 	MissingPositionalArgument
 	// UnexpectedArgument reports an extra token past the command's accepted arguments.
 	UnexpectedArgument
-	// PathNotFound reports a file/dir argument whose path does not exist on disk.
+	// PathNotFound reports a file/dir argument whose path could not be
+	// resolved on disk — either it does not exist or os.Stat returned some
+	// other access error (e.g., permission denied). The underlying os error
+	// is available via ValidationError.Err.
 	PathNotFound
 	// UnclosedQuote reports an argument value with an unbalanced quote.
 	UnclosedQuote

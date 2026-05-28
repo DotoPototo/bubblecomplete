@@ -1,6 +1,9 @@
 package bubblecomplete
 
-import "strings"
+import (
+	"strings"
+	"unicode/utf8"
+)
 
 // token is the unit produced by tokenize. It carries enough metadata for
 // completion, validation, and quote-error reporting to share a single parse.
@@ -27,7 +30,6 @@ type token struct {
 // token; an unclosed quote runs to the end of the input.
 func tokenize(input string) []token {
 	var tokens []token
-	var raw strings.Builder
 	var unquoted strings.Builder
 	inQuotes := false
 	var quoteChar rune
@@ -36,11 +38,14 @@ func tokenize(input string) []token {
 	tokenStart := -1
 
 	flush := func(end int) {
-		if raw.Len() == 0 {
+		if tokenStart == -1 {
 			return
 		}
 		tok := token{
-			Raw:      raw.String(),
+			// Raw is sliced from the original input so it preserves the
+			// exact bytes — including invalid UTF-8 sequences that would
+			// otherwise be normalized to U+FFFD by WriteRune.
+			Raw:      input[tokenStart:end],
 			Unquoted: unquoted.String(),
 			Start:    tokenStart,
 			End:      end,
@@ -51,7 +56,6 @@ func tokenize(input string) []token {
 			tok.Quote = quoteChar
 		}
 		tokens = append(tokens, tok)
-		raw.Reset()
 		unquoted.Reset()
 		inQuotes = false
 		quoted = false
@@ -60,15 +64,18 @@ func tokenize(input string) []token {
 		tokenStart = -1
 	}
 
+	// Iterate by byte index using DecodeRuneInString so size matches what
+	// range would advance by — including size=1 for invalid UTF-8 sequences
+	// (where len(string(utf8.RuneError)) would have returned 3 and skewed
+	// the byte offsets we record on each token).
 	pos := 0
-	for _, char := range input {
-		size := len(string(char))
+	for pos < len(input) {
+		char, size := utf8.DecodeRuneInString(input[pos:])
 		switch {
 		case char == ' ' && !inQuotes:
 			flush(pos)
 		case char == '"' || char == '\'':
 			if inQuotes && char == quoteChar {
-				raw.WriteRune(char)
 				inQuotes = false
 				closed = true
 				flush(pos + size)
@@ -77,11 +84,10 @@ func tokenize(input string) []token {
 				// opening quote is the first character of the token.
 				// Mid-token quotes like in --flag="value" still drive the
 				// lexer state but don't change the token's metadata.
-				openedToken := raw.Len() == 0
-				if tokenStart == -1 {
+				openedToken := tokenStart == -1
+				if openedToken {
 					tokenStart = pos
 				}
-				raw.WriteRune(char)
 				inQuotes = true
 				quoteChar = char
 				if openedToken {
@@ -92,14 +98,12 @@ func tokenize(input string) []token {
 				if tokenStart == -1 {
 					tokenStart = pos
 				}
-				raw.WriteRune(char)
 				unquoted.WriteRune(char)
 			}
 		default:
 			if tokenStart == -1 {
 				tokenStart = pos
 			}
-			raw.WriteRune(char)
 			unquoted.WriteRune(char)
 		}
 		pos += size

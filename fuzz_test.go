@@ -50,9 +50,8 @@ func FuzzTokenize(f *testing.F) {
 		tokens := tokenize(input)
 		raws := splitInput(input)
 
-		// Invariant: splitInput must equal the Raw fields of tokenize. If the
-		// wrapper ever drifts from the underlying tokenizer the fuzzer will
-		// catch it on any input.
+		// Invariant 1: splitInput equals the Raw fields of tokenize. Catches
+		// drift between the wrapper and the underlying tokenizer.
 		want := make([]string, len(tokens))
 		for i, tk := range tokens {
 			want[i] = tk.Raw
@@ -62,6 +61,20 @@ func FuzzTokenize(f *testing.F) {
 		}
 		if !reflect.DeepEqual(raws, want) {
 			t.Errorf("splitInput vs tokenize Raw drift for %q:\n  splitInput: %#v\n  tokenize:   %#v", input, raws, want)
+		}
+
+		// Invariant 2: every token's recorded byte offsets must slice the
+		// original input back to its Raw value. Catches rune-size miscounts
+		// (e.g., invalid UTF-8 where len(string(RuneError)) is 3 but the
+		// range loop advanced by 1).
+		for i, tk := range tokens {
+			if tk.Start < 0 || tk.End > len(input) || tk.Start > tk.End {
+				t.Errorf("token %d has out-of-range offsets [%d:%d] for input of len %d", i, tk.Start, tk.End, len(input))
+				continue
+			}
+			if got := input[tk.Start:tk.End]; got != tk.Raw {
+				t.Errorf("token %d offsets [%d:%d] slice to %q, want Raw %q (input %q)", i, tk.Start, tk.End, got, tk.Raw, input)
+			}
 		}
 	})
 }

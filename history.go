@@ -32,7 +32,9 @@ func (m *Model) SetHistoryFilePath(path string) {
 	}
 
 	dir := filepath.Dir(cleanPath)
-	if _, err := os.Stat(dir); os.IsNotExist(err) {
+	if _, err := os.Stat(dir); err != nil {
+		// Surface any stat error (missing dir, permission denied, etc.)
+		// immediately rather than letting later file ops fail confusingly.
 		m.err = err
 		return
 	}
