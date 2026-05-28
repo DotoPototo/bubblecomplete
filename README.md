@@ -26,7 +26,11 @@ import "github.com/dotopototo/bubblecomplete"
 
 ## Usage
 
-See the [example](./example/main.go) for a full working implementation.
+See the [example](./example/main.go) for a full working implementation. Run it from the repo root:
+
+```shell
+go run ./example
+```
 
 The command structure expects the following:
 

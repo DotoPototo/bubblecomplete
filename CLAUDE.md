@@ -3,9 +3,9 @@
 ## Repo Layout
 
 - Root is the `bubblecomplete` library.
-- `example/` is a separate Go module with `replace github.com/dotopototo/bubblecomplete => ..`.
-  API changes in the root need a matching pass through `example/main.go` and
-  `example/go.mod`.
+- `example/` is a subpackage of the root module (`package main`). Run with
+  `go run ./example` from the repo root. API changes still need a matching
+  pass through `example/main.go` / `example/commands.go`.
 
 ## Gotchas
 
