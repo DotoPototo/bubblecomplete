@@ -2,45 +2,10 @@ package bubblecomplete
 
 import (
 	"errors"
+	"os"
+	"path/filepath"
 	"testing"
 )
-
-func TestRemoveQuotes(t *testing.T) {
-	input := "\"This is a test\""
-	expected := "This is a test"
-	result := removeQuotes(input)
-	if result != expected {
-		t.Errorf("removeQuotes(%q) == %q, expected %q", input, result, expected)
-	}
-
-	input = "'This is a test'"
-	expected = "This is a test"
-	result = removeQuotes(input)
-	if result != expected {
-		t.Errorf("removeQuotes(%q) == %q, expected %q", input, result, expected)
-	}
-
-	input = "\"This is a test"
-	expected = "\"This is a test"
-	result = removeQuotes(input)
-	if result != expected {
-		t.Errorf("removeQuotes(%q) == %q, expected %q", input, result, expected)
-	}
-
-	input = "'This is a test"
-	expected = "'This is a test"
-	result = removeQuotes(input)
-	if result != expected {
-		t.Errorf("removeQuotes(%q) == %q, expected %q", input, result, expected)
-	}
-
-	input = "'This is a test='"
-	expected = "This is a test="
-	result = removeQuotes(input)
-	if result != expected {
-		t.Errorf("removeQuotes(%q) == %q, expected %q", input, result, expected)
-	}
-}
 
 func TestValidateCommandInput(t *testing.T) {
 	testCases := []struct {
@@ -464,5 +429,78 @@ func TestValidationError_UnwrapPreservesUnderlying(t *testing.T) {
 	}
 	if ve.Err == nil {
 		t.Fatal("expected non-nil underlying error for strconv failure")
+	}
+}
+
+func TestValidatePath_TildeExpansion(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	fpath := filepath.Join(home, "test_file.txt")
+	if err := os.WriteFile(fpath, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	arg := &PositionalArgument{Name: "F", Type: FileArgument, Required: true}
+
+	// ~/test_file.txt resolves against $HOME → real file → no error.
+	if err := validatePath(arg, "~/test_file.txt", true, false); err != nil {
+		t.Errorf("validatePath(%q): %v, want nil", "~/test_file.txt", err)
+	}
+
+	// ~/nonexistent → PathNotFound.
+	var ve *ValidationError
+	err := validatePath(arg, "~/nonexistent", true, false)
+	if !errors.As(err, &ve) || ve.Kind != PathNotFound {
+		t.Errorf("validatePath(%q): got %v, want PathNotFound", "~/nonexistent", err)
+	}
+
+	// Bare ~ under FileArgument → IsDir error (home itself is a directory).
+	err = validatePath(arg, "~", true, false)
+	if !errors.As(err, &ve) || ve.Kind != InvalidArgumentValue {
+		t.Errorf("validatePath(%q) FileArg: got %v, want InvalidArgumentValue (is-dir)", "~", err)
+	}
+
+	// Bare ~ under DirArgument → valid (home is a real directory).
+	dirArg := &PositionalArgument{Name: "D", Type: DirArgument, Required: true}
+	if err := validatePath(dirArg, "~", false, true); err != nil {
+		t.Errorf("validatePath(%q) DirArg: %v, want nil", "~", err)
+	}
+}
+
+func TestValidatePath_QuoteSemantics(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+
+	fpath := filepath.Join(home, "quoted.txt")
+	if err := os.WriteFile(fpath, []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	arg := &PositionalArgument{Name: "F", Type: FileArgument, Required: true}
+	var ve *ValidationError
+
+	// Matched double quotes: tilde expands → real file → no error.
+	if err := validatePath(arg, "\"~/quoted.txt\"", true, false); err != nil {
+		t.Errorf("matched double quotes: %v, want nil", err)
+	}
+
+	// Matched single quotes: tilde does NOT expand → literal "~/quoted.txt"
+	// resolved against CWD → not found.
+	err := validatePath(arg, "'~/quoted.txt'", true, false)
+	if !errors.As(err, &ve) || ve.Kind != PathNotFound {
+		t.Errorf("matched single quotes: got %v, want PathNotFound", err)
+	}
+
+	// Unclosed double quote → UnclosedQuote (matches StringArgument behaviour).
+	err = validatePath(arg, "\"~/foo", true, false)
+	if !errors.As(err, &ve) || ve.Kind != UnclosedQuote {
+		t.Errorf("unclosed double: got %v, want UnclosedQuote", err)
+	}
+
+	// Unclosed single quote → UnclosedQuote.
+	err = validatePath(arg, "'~/foo", true, false)
+	if !errors.As(err, &ve) || ve.Kind != UnclosedQuote {
+		t.Errorf("unclosed single: got %v, want UnclosedQuote", err)
 	}
 }

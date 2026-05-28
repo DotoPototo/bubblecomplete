@@ -373,7 +373,24 @@ func validateFileDirArgument(arg argument, value string) error {
 }
 
 func validatePath(arg argument, value string, wantFile, wantDir bool) error {
-	value = removeQuotes(value)
+	// File/dir args validate quotes the same way string args do — unclosed
+	// quotes are surfaced as UnclosedQuote rather than producing a misleading
+	// "path not found" against the literal quoted string.
+	if err := checkUnclosedQuote(arg, value, "\""); err != nil {
+		return err
+	}
+	if err := checkUnclosedQuote(arg, value, "'"); err != nil {
+		return err
+	}
+
+	unquoted, opener := stripQuotes(value)
+	// Tilde expands outside quotes and inside "..." but not inside '...'.
+	// See [resolvePath].
+	expandTilde := opener != '\''
+
+	cwd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
+	fullClean, _, _, _ := resolvePath(unquoted, cwd, home, expandTilde)
 
 	var pathType string
 	switch {
@@ -385,7 +402,7 @@ func validatePath(arg argument, value string, wantFile, wantDir bool) error {
 		pathType = "directory"
 	}
 
-	info, err := os.Stat(value)
+	info, err := os.Stat(fullClean)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return errPathNotExist(pathType, arg.getName())
@@ -399,13 +416,4 @@ func validatePath(arg argument, value string, wantFile, wantDir bool) error {
 		return errPathIsFile(arg.getName())
 	}
 	return nil
-}
-
-func removeQuotes(s string) string {
-	if len(s) >= 2 {
-		if (s[0] == '"' && s[len(s)-1] == '"') || (s[0] == '\'' && s[len(s)-1] == '\'') {
-			s = s[1 : len(s)-1]
-		}
-	}
-	return s
 }
