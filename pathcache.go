@@ -75,6 +75,19 @@ type dirCacheEntry struct {
 	err error
 }
 
+// matchKey returns the (names slice, lookup needle) pair to use for
+// case-aware matching of base against this entry. On case-insensitive
+// platforms (macOS, Windows heuristic) it returns the folded names and a
+// lowercased base; on Linux it returns the raw names and base unchanged.
+// Consumers iterate the returned slice in parallel with entry.names by
+// index — names is always the source of truth for display.
+func (e *dirCacheEntry) matchKey(base string) (names []string, needle string) {
+	if caseInsensitiveFS() {
+		return e.foldNames, strings.ToLower(base)
+	}
+	return e.names, base
+}
+
 // dirCache is a bounded LRU + TTL cache of [os.ReadDir] results, keyed by
 // cleaned absolute parent path.
 //

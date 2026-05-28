@@ -74,7 +74,7 @@ func TestActiveFileArgument_Inactive(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, _, _, _, _, _, ok := activeFileArgument(c.input, c.cmds)
+			_, ok := activeFileArgument(c.input, c.cmds)
 			if ok {
 				t.Errorf("activeFileArgument(%q) ok=true, want false", c.input)
 			}
@@ -84,7 +84,8 @@ func TestActiveFileArgument_Inactive(t *testing.T) {
 
 func TestActiveFileArgument_Positional(t *testing.T) {
 	const input = "cat ~/Doc"
-	kind, _, vs, ve, tp, oq, ok := activeFileArgument(input, cmds(fileArgCmd))
+	a, ok := activeFileArgument(input, cmds(fileArgCmd))
+	kind, vs, ve, tp, oq := a.kind, a.valueStart, a.valueEnd, a.tokenPrefix, a.openingQuote
 	if !ok {
 		t.Fatal("expected active=true")
 	}
@@ -117,7 +118,8 @@ func TestActiveFileArgument_PositionalQuoted(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			kind, _, vs, ve, tp, oq, ok := activeFileArgument(c.input, cmds(fileArgCmd))
+			a, ok := activeFileArgument(c.input, cmds(fileArgCmd))
+			kind, vs, ve, tp, oq := a.kind, a.valueStart, a.valueEnd, a.tokenPrefix, a.openingQuote
 			if !ok {
 				t.Fatal("expected active=true")
 			}
@@ -139,7 +141,8 @@ func TestActiveFileArgument_PositionalQuoted(t *testing.T) {
 
 func TestActiveFileArgument_FlagSpaceSeparated(t *testing.T) {
 	const input = "find . --path ~/Doc"
-	kind, _, vs, ve, tp, oq, ok := activeFileArgument(input, cmds(findCmd))
+	a, ok := activeFileArgument(input, cmds(findCmd))
+	kind, vs, ve, tp, oq := a.kind, a.valueStart, a.valueEnd, a.tokenPrefix, a.openingQuote
 	if !ok {
 		t.Fatal("expected active=true")
 	}
@@ -168,7 +171,8 @@ func TestActiveFileArgument_FlagEqualsForm(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			kind, _, vs, ve, tp, oq, ok := activeFileArgument(c.input, cmds(findCmd))
+			a, ok := activeFileArgument(c.input, cmds(findCmd))
+			kind, vs, ve, tp, oq := a.kind, a.valueStart, a.valueEnd, a.tokenPrefix, a.openingQuote
 			if !ok {
 				t.Fatal("expected active=true")
 			}
@@ -189,11 +193,11 @@ func TestActiveFileArgument_FlagEqualsForm(t *testing.T) {
 }
 
 func TestActiveFileArgument_DirAndFileDir(t *testing.T) {
-	if kind, _, _, _, _, _, ok := activeFileArgument("cd /etc", cmds(dirArgCmd)); !ok || kind != DirArgument {
-		t.Errorf("DirArgument: ok=%v kind=%v", ok, kind)
+	if a, ok := activeFileArgument("cd /etc", cmds(dirArgCmd)); !ok || a.kind != DirArgument {
+		t.Errorf("DirArgument: ok=%v kind=%v", ok, a.kind)
 	}
-	if kind, _, _, _, _, _, ok := activeFileArgument("open /etc", cmds(fileDirArgCmd)); !ok || kind != FileDirArgument {
-		t.Errorf("FileDirArgument: ok=%v kind=%v", ok, kind)
+	if a, ok := activeFileArgument("open /etc", cmds(fileDirArgCmd)); !ok || a.kind != FileDirArgument {
+		t.Errorf("FileDirArgument: ok=%v kind=%v", ok, a.kind)
 	}
 }
 
@@ -300,13 +304,13 @@ func TestGenerateCandidates_InclusionRules(t *testing.T) {
 	entry := c.read(dir)
 
 	// FileArgument: files + dirs (drill-down), no specials.
-	fileCands := generateCandidates(FileArgument, "", "", 0, "", entry, 50, false, dir)
+	fileCands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 	if !containsName(fileCands, "alpha.txt") || !containsName(fileCands, "subdir/") {
 		t.Errorf("FileArgument candidates missing files or dirs: %v", names(fileCands))
 	}
 
 	// DirArgument: dirs only.
-	dirCands := generateCandidates(DirArgument, "", "", 0, "", entry, 50, false, dir)
+	dirCands := generateCandidates(candidateRequest{kind: DirArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 	for _, c := range dirCands {
 		if !c.isDir {
 			t.Errorf("DirArgument surfaced non-dir %q", c.displayName)
@@ -317,7 +321,7 @@ func TestGenerateCandidates_InclusionRules(t *testing.T) {
 	}
 
 	// FileDirArgument: files + dirs.
-	fdCands := generateCandidates(FileDirArgument, "", "", 0, "", entry, 50, false, dir)
+	fdCands := generateCandidates(candidateRequest{kind: FileDirArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 	if !containsName(fdCands, "alpha.txt") || !containsName(fdCands, "subdir/") {
 		t.Errorf("FileDirArgument candidates missing files or dirs: %v", names(fdCands))
 	}
@@ -329,19 +333,19 @@ func TestGenerateCandidates_HiddenFiles(t *testing.T) {
 	entry := c.read(dir)
 
 	// Default: dotfiles hidden when base prefix doesn't start with '.'.
-	cands := generateCandidates(FileArgument, "", "", 0, "", entry, 50, false, dir)
+	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 	if containsName(cands, ".hidden") {
 		t.Errorf("dotfile leaked into candidates: %v", names(cands))
 	}
 
 	// Typed prefix "." surfaces dotfiles even without the option.
-	cands = generateCandidates(FileArgument, "", "", 0, ".", entry, 50, false, dir)
+	cands = generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: ".", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 	if !containsName(cands, ".hidden") {
 		t.Errorf("dotfile not surfaced for '.' prefix: %v", names(cands))
 	}
 
 	// Option enabled: always surfaced.
-	cands = generateCandidates(FileArgument, "", "", 0, "", entry, 50, true, dir)
+	cands = generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "", entry: entry, limit: 50, hiddenFiles: true, parent: dir})
 	if !containsName(cands, ".hidden") {
 		t.Errorf("dotfile not surfaced with HiddenFiles=true: %v", names(cands))
 	}
@@ -352,7 +356,7 @@ func TestGenerateCandidates_PrefixFilter(t *testing.T) {
 	c := newDirCache()
 	entry := c.read(dir)
 
-	cands := generateCandidates(FileArgument, "", "", 0, "alph", entry, 50, false, dir)
+	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "alph", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 	if !containsName(cands, "alpha.txt") {
 		t.Errorf("prefix 'alph' should match alpha.txt: %v", names(cands))
 	}
@@ -372,7 +376,7 @@ func TestGenerateCandidates_SymlinkResolution(t *testing.T) {
 
 	// FileArgument: link_alpha (symlink to file) included, link_dir
 	// (symlink to dir) also included (drill-down), link_broken excluded.
-	cands := generateCandidates(FileArgument, "", "", 0, "link", entry, 50, false, dir)
+	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "link", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 	if !containsName(cands, "link_alpha") {
 		t.Errorf("link_alpha should be included: %v", names(cands))
 	}
@@ -384,7 +388,7 @@ func TestGenerateCandidates_SymlinkResolution(t *testing.T) {
 	}
 
 	// DirArgument: only link_dir.
-	dirCands := generateCandidates(DirArgument, "", "", 0, "link", entry, 50, false, dir)
+	dirCands := generateCandidates(candidateRequest{kind: DirArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "link", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 	if containsName(dirCands, "link_alpha") {
 		t.Errorf("link_alpha (→file) should NOT be in DirArgument: %v", names(dirCands))
 	}
@@ -397,7 +401,7 @@ func TestGenerateCandidates_SortDirsFirst(t *testing.T) {
 	dir := makeTestDir(t)
 	c := newDirCache()
 	entry := c.read(dir)
-	cands := generateCandidates(FileArgument, "", "", 0, "", entry, 50, false, dir)
+	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 
 	// All directory entries should precede all file entries in the output.
 	sawFile := false
@@ -438,7 +442,7 @@ func TestGenerateCandidates_StatBudget(t *testing.T) {
 	c := newDirCache()
 	entry := c.read(dir)
 
-	cands := generateCandidates(FileArgument, "", "", 0, "ln", entry, 2, false, dir)
+	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "ln", entry: entry, limit: 2, hiddenFiles: false, parent: dir})
 	if len(cands) > 2 {
 		t.Errorf("candidates exceeded limit: got %d, want ≤ 2", len(cands))
 	}
@@ -466,7 +470,7 @@ func TestGenerateCandidates_UnknownTypeResolvedByStat(t *testing.T) {
 		foldNames: []string{"real.txt"},
 		kinds:     []entryKind{kindUnknown}, // forced unknown
 	}
-	cands := generateCandidates(FileArgument, "", "", 0, "real", entry, 10, false, dir)
+	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "real", entry: entry, limit: 10, hiddenFiles: false, parent: dir})
 	if len(cands) != 1 || cands[0].displayName != "real.txt" {
 		t.Errorf("kindUnknown entry should resolve to file via stat: got %v", names(cands))
 	}
@@ -477,7 +481,7 @@ func TestGenerateCandidates_Truncation(t *testing.T) {
 	c := newDirCache()
 	entry := c.read(dir)
 
-	cands := generateCandidates(FileArgument, "", "", 0, "", entry, 2, false, dir)
+	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "", entry: entry, limit: 2, hiddenFiles: false, parent: dir})
 	if len(cands) != 2 {
 		t.Errorf("limit=2 → len=%d, want 2", len(cands))
 	}
@@ -488,7 +492,7 @@ func TestGenerateCandidates_CaseSensitivity(t *testing.T) {
 	c := newDirCache()
 	entry := c.read(dir)
 
-	cands := generateCandidates(FileArgument, "", "", 0, "BET", entry, 50, false, dir)
+	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "BET", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 	if runtime.GOOS == "linux" {
 		// Case-sensitive: only "Beta/" matches "BET", not "beta.txt".
 		if containsName(cands, "beta.txt") {
@@ -514,19 +518,19 @@ func TestGenerateCandidates_InsertionStrings(t *testing.T) {
 
 	// Equals-form unquoted: tokenPrefix="--path=", openingQuote=0. File
 	// completions get a trailing space.
-	cands := generateCandidates(FileArgument, "--path=", "", 0, "alpha", entry, 10, false, dir)
+	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "--path=", base: "alpha", entry: entry, limit: 10, parent: dir})
 	if len(cands) == 0 || cands[0].insertion != "--path=alpha.txt " {
 		t.Errorf("equals-form insertion = %v, want --path=alpha.txt (with trailing space)", cands)
 	}
 
 	// Equals-form quoted: tokenPrefix=`--path="`, openingQuote='"'.
-	cands = generateCandidates(FileArgument, `--path="`, "", '"', "alpha", entry, 10, false, dir)
+	cands = generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: `--path="`, userPrefix: "", openingQuote: '"', base: "alpha", entry: entry, limit: 10, hiddenFiles: false, parent: dir})
 	if len(cands) == 0 || cands[0].insertion != `--path="alpha.txt" ` {
 		t.Errorf("equals-quoted insertion = %v, want --path=\"alpha.txt\" (with trailing space)", cands)
 	}
 
 	// Positional quoted with userPrefix preserved.
-	cands = generateCandidates(FileArgument, `"`, "~/", '"', "alpha", entry, 10, false, dir)
+	cands = generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: `"`, userPrefix: "~/", openingQuote: '"', base: "alpha", entry: entry, limit: 10, hiddenFiles: false, parent: dir})
 	if len(cands) == 0 || cands[0].insertion != `"~/alpha.txt" ` {
 		t.Errorf("quoted positional insertion = %v, want \"~/alpha.txt\" (with trailing space)", cands)
 	}
@@ -576,7 +580,7 @@ func TestGenerateCandidates_SymlinkDescription(t *testing.T) {
 	c := newDirCache()
 	entry := c.read(dir)
 
-	cands := generateCandidates(FileArgument, "", "", 0, "link", entry, 50, false, dir)
+	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "link", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 
 	var alphaDesc, dirDesc string
 	for _, candidate := range cands {

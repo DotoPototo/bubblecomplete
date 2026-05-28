@@ -27,10 +27,14 @@ const (
 
 // pathState is the per-keystroke result of [activeFileArgument] plus
 // classification and candidate generation. Stored on [Model], read by
-// [Model.Render] and the validation-style suppression. Frozen during
-// completion cycling, same as validationErr — [Model.renderedInput]
-// bypasses the overlay during cycling so the stale offsets don't mis-style
-// the previewed candidate.
+// [Model.Render] and the validation-style suppression.
+//
+// Refreshed on every input change (the input-changed branch in Update)
+// AND on every Tab cycle and cycle-revert (keyTab), so the offsets and
+// validity always reflect the value currently in [Model.input]. Files
+// cycled-to carry a trailing space which makes activeFileArgument
+// inactive — overlay correctly absent for that preview. Dirs cycle with
+// the overlay active and the colour reflects the cycled-to dir.
 type pathState struct {
 	// active is true when the user is currently editing a value for a
 	// file/dir-typed argument and the feature is enabled.
@@ -65,7 +69,7 @@ type pathState struct {
 type pathCompletion struct {
 	displayName string // basename + "/" if directory
 	insertion   string // FULL active-token replacement
-	description string // "file" or "dir"
+	description string // "file" / "dir" — or "symlink → file" / "symlink → dir" when the underlying DirEntry was a symlink
 	isDir       bool
 }
 
@@ -96,6 +100,28 @@ func statBudget(limit int) int {
 	return limit
 }
 
+// activeArg describes the user's active typing position when it's a value
+// for a file/dir-typed argument. Populated by [activeFileArgument] and
+// consumed by [Model.recomputePathState].
+type activeArg struct {
+	// kind is one of FileArgument, DirArgument, FileDirArgument.
+	kind ArgumentType
+	// name is the active argument's display name as produced by
+	// argument.getName(). Used by isPartialPathMidType to verify that a
+	// PathNotFound validation error belongs to this argument before
+	// suppressing whole-input red.
+	name string
+	// valueStart and valueEnd are byte offsets in the input string that
+	// bound the *unquoted* value text — used by the render overlay.
+	valueStart int
+	valueEnd   int
+	// tokenPrefix is the leading bytes of the active token before the
+	// value: flag prefix (`--path=`) and/or opening quote.
+	tokenPrefix string
+	// openingQuote is 0 if no quote, else '"' or '\''.
+	openingQuote rune
+}
+
 // activeFileArgument reports whether the user is currently editing a value
 // for a [FileArgument], [DirArgument], or [FileDirArgument], and if so
 // returns the metadata needed to drive completion and validity colouring.
@@ -106,41 +132,27 @@ func statBudget(limit int) int {
 //   - the active position is a command word, a flag name without value, or a
 //     value for a non-file argument type
 //   - the active value is empty (e.g. "--path=" with nothing after)
-//
-// argName is the active argument's display name (argument.getName()) — used
-// to verify that a PathNotFound validation error belongs to the active
-// token before suppressing whole-input red. valueStart and valueEnd are
-// byte offsets in input that bound the *unquoted* value text. tokenPrefix
-// is whatever leads the active token before the value (flag prefix and/or
-// opening quote). openingQuote is 0 if no quote.
-func activeFileArgument(input string, commands []*Command) (
-	kind ArgumentType,
-	argName string,
-	valueStart, valueEnd int,
-	tokenPrefix string,
-	openingQuote rune,
-	ok bool,
-) {
+func activeFileArgument(input string, commands []*Command) (activeArg, bool) {
 	if strings.HasSuffix(input, " ") {
-		return
+		return activeArg{}, false
 	}
 	tokens := tokenize(input)
 	if len(tokens) == 0 {
-		return
+		return activeArg{}, false
 	}
 	parts := splitInput(input)
 	if len(parts) == 0 {
-		return
+		return activeArg{}, false
 	}
 
 	finalCmd, depth, globalFlags := walkToFinalCommand(input, parts, commands)
 	if finalCmd == nil {
-		return
+		return activeArg{}, false
 	}
 
 	argParts := parts[depth:]
 	if len(argParts) == 0 {
-		return
+		return activeArg{}, false
 	}
 	posArgs, flagArgs := splitPositionArgsAndFlags(argParts, finalCmd, globalFlags)
 
@@ -157,43 +169,21 @@ func activeFileArgument(input string, commands []*Command) (
 				continue
 			}
 			if !isFileLikeArg(f.Type) {
-				return
+				return activeArg{}, false
 			}
-			kind = f.Type
-			argName = f.getName()
-			eqIdx := strings.IndexByte(tokenRaw, '=')
-			valueStart = activeToken.Start + eqIdx + 1
-			valueEnd = activeToken.End
-			tokenPrefix = tokenRaw[:eqIdx+1]
-			// Inline opening quote after '='?
-			if valueStart < valueEnd {
-				first := input[valueStart]
-				if first == '"' || first == '\'' {
-					openingQuote = rune(first)
-					tokenPrefix += string(openingQuote)
-					valueStart++
-					if valueEnd > valueStart && input[valueEnd-1] == first {
-						valueEnd--
-					}
-				}
-			}
-			ok = valueStart < valueEnd
-			if !ok {
-				return ArgumentType(""), "", 0, 0, "", 0, false
-			}
-			return kind, argName, valueStart, valueEnd, tokenPrefix, openingQuote, true
+			return equalsFormActiveArg(input, activeToken, tokenRaw, f.Type, f.getName())
 		}
 		// Flag prefix didn't match any known flag — not active.
-		return
+		return activeArg{}, false
 	}
 
 	// Case 2: space-separated flag value. isEnteringFlagValue inspects the
 	// PRECEDING token to see whether it was a flag waiting for a value.
 	if yes, flag := isEnteringFlagValue(input, finalCmd, flagArgs, globalFlags); yes {
 		if !isFileLikeArg(flag.Type) {
-			return
+			return activeArg{}, false
 		}
-		return finalizeTokenRange(activeToken, flag.Type, flag.getName())
+		return tokenActiveArg(activeToken, flag.Type, flag.getName())
 	}
 
 	// Case 3: positional argument value. Two guards:
@@ -207,38 +197,67 @@ func activeFileArgument(input string, commands []*Command) (
 		len(posArgs) > 0 && len(posArgs) <= len(finalCmd.PositionalArguments) {
 		if yes, pos := isEnteringPosArgValue(input, finalCmd, posArgs); yes {
 			if !isFileLikeArg(pos.Type) {
-				return
+				return activeArg{}, false
 			}
-			return finalizeTokenRange(activeToken, pos.Type, pos.getName())
+			return tokenActiveArg(activeToken, pos.Type, pos.getName())
 		}
 	}
 
-	return
+	return activeArg{}, false
 }
 
-// finalizeTokenRange computes valueStart/valueEnd/tokenPrefix/openingQuote
-// for a positional or space-separated-flag value (Case 2/3 above). The
-// active token's bounds come from [tokenize]; quote handling reflects
-// whether the token opened with a quote and whether that quote was closed.
-func finalizeTokenRange(tok token, kind ArgumentType, name string) (
-	ArgumentType, string, int, int, string, rune, bool,
-) {
-	valueStart := tok.Start
-	valueEnd := tok.End
-	var tokenPrefix string
-	var openingQuote rune
-	if tok.Quoted {
-		openingQuote = tok.Quote
-		tokenPrefix = string(openingQuote)
-		valueStart++
-		if tok.Closed {
-			valueEnd--
+// equalsFormActiveArg builds an activeArg for the equals-form flag value
+// case (`--flag=value`, `--flag="value"`, etc.). Splits the active token on
+// the first '=' and detects an inline opener after it.
+func equalsFormActiveArg(input string, tok token, tokenRaw string, kind ArgumentType, name string) (activeArg, bool) {
+	eqIdx := strings.IndexByte(tokenRaw, '=')
+	a := activeArg{
+		kind:        kind,
+		name:        name,
+		valueStart:  tok.Start + eqIdx + 1,
+		valueEnd:    tok.End,
+		tokenPrefix: tokenRaw[:eqIdx+1],
+	}
+	if a.valueStart < a.valueEnd {
+		first := input[a.valueStart]
+		if first == '"' || first == '\'' {
+			a.openingQuote = rune(first)
+			a.tokenPrefix += string(a.openingQuote)
+			a.valueStart++
+			if a.valueEnd > a.valueStart && input[a.valueEnd-1] == first {
+				a.valueEnd--
+			}
 		}
 	}
-	if valueStart >= valueEnd {
-		return ArgumentType(""), "", 0, 0, "", 0, false
+	if a.valueStart >= a.valueEnd {
+		return activeArg{}, false
 	}
-	return kind, name, valueStart, valueEnd, tokenPrefix, openingQuote, true
+	return a, true
+}
+
+// tokenActiveArg builds an activeArg for a positional or space-separated
+// flag value (Cases 2 and 3 above). The active token's bounds come from
+// [tokenize]; quote handling reflects whether the token opened with a
+// quote and whether that quote was closed.
+func tokenActiveArg(tok token, kind ArgumentType, name string) (activeArg, bool) {
+	a := activeArg{
+		kind:       kind,
+		name:       name,
+		valueStart: tok.Start,
+		valueEnd:   tok.End,
+	}
+	if tok.Quoted {
+		a.openingQuote = tok.Quote
+		a.tokenPrefix = string(a.openingQuote)
+		a.valueStart++
+		if tok.Closed {
+			a.valueEnd--
+		}
+	}
+	if a.valueStart >= a.valueEnd {
+		return activeArg{}, false
+	}
+	return a, true
 }
 
 // isFileLikeArg reports whether t is one of the filesystem-backed argument
@@ -307,28 +326,53 @@ func classifyByKind(kind ArgumentType, isDir bool) pathValidity {
 }
 
 func exactMatch(entry *dirCacheEntry, base string) bool {
-	if caseInsensitiveFS() {
-		return slices.Contains(entry.foldNames, strings.ToLower(base))
-	}
-	return slices.Contains(entry.names, base)
+	names, needle := entry.matchKey(base)
+	return slices.Contains(names, needle)
 }
 
 func prefixMatch(entry *dirCacheEntry, base string) bool {
-	if caseInsensitiveFS() {
-		lower := strings.ToLower(base)
-		for _, n := range entry.foldNames {
-			if strings.HasPrefix(n, lower) {
-				return true
-			}
-		}
-		return false
-	}
-	for _, n := range entry.names {
-		if strings.HasPrefix(n, base) {
+	names, needle := entry.matchKey(base)
+	for _, n := range names {
+		if strings.HasPrefix(n, needle) {
 			return true
 		}
 	}
 	return false
+}
+
+// candidateRequest groups the inputs to [generateCandidates] so the
+// function signature stays manageable. Callers should construct the
+// struct deliberately rather than relying on field defaults — several
+// fields have meaningful zero values (e.g. an empty tokenPrefix or
+// userPrefix, openingQuote == 0 meaning "no quote", hiddenFiles ==
+// false), so a partial literal must be intentional, not accidental.
+type candidateRequest struct {
+	// kind is the active argument's type (FileArgument / DirArgument /
+	// FileDirArgument) — drives the inclusion filter.
+	kind ArgumentType
+	// tokenPrefix is the leading bytes of the active token that precede
+	// the value (flag prefix and/or opening quote). Used to build
+	// insertion strings that preserve the user's token shape.
+	tokenPrefix string
+	// userPrefix is the leading bytes of the typed value up to the last
+	// separator before base ("~/", "./", "/abs/path/", ""). Preserved
+	// verbatim in insertions so completion keeps the user's style.
+	userPrefix string
+	// openingQuote is 0 if no quote, else '"' or '\'' — drives insertion
+	// quoting and auto-quote-on-space logic in [buildCompletion].
+	openingQuote rune
+	// base is the basename prefix to match against. Empty when the typed
+	// value ends in a separator (list-all-children case).
+	base string
+	// entry is the parent directory's cached ReadDir result.
+	entry *dirCacheEntry
+	// limit caps the candidate count after sort. Clamped to >= 1.
+	limit int
+	// hiddenFiles surfaces dotfiles even when base does not start with ".".
+	hiddenFiles bool
+	// parent is the absolute parent directory. Used to construct stat
+	// paths when resolving symlink/unknown entry kinds.
+	parent string
 }
 
 // generateCandidates produces the [pathCompletion] list for the active
@@ -338,22 +382,11 @@ func prefixMatch(entry *dirCacheEntry, base string) bool {
 // Symlink target kinds are resolved via [os.Stat] for entries that survive
 // the prefix and hidden filters; [statBudget] bounds the worst-case stat
 // count per pass.
-func generateCandidates(
-	kind ArgumentType,
-	tokenPrefix, userPrefix string,
-	openingQuote rune,
-	base string,
-	entry *dirCacheEntry,
-	limit int,
-	hiddenFiles bool,
-	parent string,
-) []pathCompletion {
-	if entry.err != nil {
+func generateCandidates(req candidateRequest) []pathCompletion {
+	if req.entry.err != nil {
 		return nil
 	}
-	if limit < 1 {
-		limit = 1
-	}
+	limit := max(req.limit, 1)
 
 	type prelim struct {
 		name      string
@@ -361,27 +394,29 @@ func generateCandidates(
 		isSymlink bool // original DirEntry kind was kindSymlink (description hint)
 	}
 
-	caseInsensitive := caseInsensitiveFS()
-	lowerBase := strings.ToLower(base)
+	matchNames, needle := req.entry.matchKey(req.base)
 	statsRemaining := statBudget(limit)
-	survivors := make([]prelim, 0, min(limit, len(entry.names)))
+	survivors := make([]prelim, 0, min(limit, len(req.entry.names)))
 
-	for i, name := range entry.names {
-		if !matchesPrefix(name, entry.foldNames[i], base, lowerBase, caseInsensitive) {
+	for i, candidateKey := range matchNames {
+		if !strings.HasPrefix(candidateKey, needle) {
 			continue
 		}
-		if !hiddenFiles && strings.HasPrefix(name, ".") && !strings.HasPrefix(base, ".") {
+		// Display always uses the raw filesystem name regardless of
+		// case-insensitive matching — case is preserved in the UI.
+		name := req.entry.names[i]
+		if !req.hiddenFiles && strings.HasPrefix(name, ".") && !strings.HasPrefix(req.base, ".") {
 			continue
 		}
 
-		k := entry.kinds[i]
+		k := req.entry.kinds[i]
 		wasSymlink := k == kindSymlink
 		if k == kindSymlink || k == kindUnknown {
 			if statsRemaining <= 0 {
 				continue // budget exhausted; drop
 			}
 			statsRemaining--
-			info, err := os.Stat(filepath.Join(parent, name))
+			info, err := os.Stat(filepath.Join(req.parent, name))
 			if err != nil {
 				continue // broken symlink or stat failure
 			}
@@ -395,7 +430,7 @@ func generateCandidates(
 			}
 		}
 
-		if !includeKind(kind, k) {
+		if !includeKind(req.kind, k) {
 			continue
 		}
 		survivors = append(survivors, prelim{name: name, isDir: k == kindDir, isSymlink: wasSymlink})
@@ -415,17 +450,9 @@ func generateCandidates(
 
 	out := make([]pathCompletion, len(survivors))
 	for i, s := range survivors {
-		out[i] = buildCompletion(s.name, s.isDir, s.isSymlink, tokenPrefix, userPrefix, openingQuote)
+		out[i] = buildCompletion(s.name, s.isDir, s.isSymlink, req.tokenPrefix, req.userPrefix, req.openingQuote)
 	}
 	return out
-}
-
-// matchesPrefix applies the platform's case-sensitivity heuristic.
-func matchesPrefix(name, foldName, base, lowerBase string, caseInsensitive bool) bool {
-	if caseInsensitive {
-		return strings.HasPrefix(foldName, lowerBase)
-	}
-	return strings.HasPrefix(name, base)
 }
 
 // includeKind applies the candidate-inclusion table:
@@ -549,7 +576,7 @@ func (m *Model) recomputePathState() {
 		return
 	}
 
-	kind, argName, valueStart, valueEnd, tokenPrefix, openingQuote, ok := activeFileArgument(m.input.Value(), m.Commands)
+	a, ok := activeFileArgument(m.input.Value(), m.Commands)
 	if !ok {
 		return
 	}
@@ -560,8 +587,8 @@ func (m *Model) recomputePathState() {
 
 	cwd, _ := os.Getwd()
 	home, _ := os.UserHomeDir()
-	typed := m.input.Value()[valueStart:valueEnd]
-	expandTilde := openingQuote != '\''
+	typed := m.input.Value()[a.valueStart:a.valueEnd]
+	expandTilde := a.openingQuote != '\''
 	fullClean, parent, base, userPrefix := resolvePath(typed, cwd, home, expandTilde)
 
 	entries := m.pathCache.read(parent)
@@ -570,12 +597,22 @@ func (m *Model) recomputePathState() {
 
 	m.pathState = pathState{
 		active:     true,
-		kind:       kind,
-		argName:    argName,
-		valueStart: valueStart,
-		valueEnd:   valueEnd,
+		kind:       a.kind,
+		argName:    a.name,
+		valueStart: a.valueStart,
+		valueEnd:   a.valueEnd,
 		base:       base,
-		validity:   classify(kind, fullClean, base, entries),
-		candidates: generateCandidates(kind, tokenPrefix, userPrefix, openingQuote, base, entries, limit, m.HiddenFiles, parent),
+		validity:   classify(a.kind, fullClean, base, entries),
+		candidates: generateCandidates(candidateRequest{
+			kind:         a.kind,
+			tokenPrefix:  a.tokenPrefix,
+			userPrefix:   userPrefix,
+			openingQuote: a.openingQuote,
+			base:         base,
+			entry:        entries,
+			limit:        limit,
+			hiddenFiles:  m.HiddenFiles,
+			parent:       parent,
+		}),
 	}
 }
