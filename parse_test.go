@@ -80,6 +80,22 @@ func TestTokenize(t *testing.T) {
 				{Raw: `--message="hello world"`, Unquoted: `--message=hello world`, Start: 0, End: 23, Closed: true},
 			},
 		},
+		{
+			// Counterpart to the previous case: same shape but the inner
+			// quote never closes. Quoted stays false (the token opened
+			// with '-'), but Closed must be false too — the
+			// closed-detection logic in flush has to account for the
+			// still-open inner quote (the inQuotes guard in parse.go).
+			// Without that guard, an unclosed-inner-quote token would
+			// falsely report Closed=true and downstream consumers (e.g.
+			// isEnteringFlagValue) would think the user committed past
+			// the value.
+			name:  "unclosed inner quote leaves token open",
+			input: `--message="hello world`,
+			want: []token{
+				{Raw: `--message="hello world`, Unquoted: `--message=hello world`, Start: 0, End: 22, Closed: false},
+			},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

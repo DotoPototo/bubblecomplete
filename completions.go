@@ -359,6 +359,20 @@ func isEnteringFlagValue(
 	lastArg := flagArgParts[len(flagArgParts)-1]
 	allFlags := slices.Concat(finalCommand.Flags, globalFlags)
 
+	// If the input ends with a space AND the last token is closed, the user
+	// has committed past the value — they're no longer entering it. This
+	// applies uniformly to all forms: `-m 'msg' `, `-m "msg" `, `-m hello `,
+	// `--message=value `, etc. The `Closed` field on the tokenizer's last
+	// token correctly distinguishes a fully-closed quoted value from an
+	// unclosed one whose body happens to end in a space (e.g. `-m "hi `,
+	// which is still entering the -m value because the quote never closed).
+	if strings.HasSuffix(input, " ") {
+		tokens := tokenize(input)
+		if len(tokens) > 0 && tokens[len(tokens)-1].Closed {
+			return false, nil
+		}
+	}
+
 	// Check if we're entering a flag value with a space between the flag and value
 	if len(flagArgParts) >= 2 {
 		lastFlag := flagArgParts[len(flagArgParts)-2]

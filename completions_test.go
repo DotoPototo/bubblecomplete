@@ -559,6 +559,52 @@ func TestSortedGetCompletions(t *testing.T) {
 			input:    "git commit --message=\"test message ",
 			expected: []string{"-m --message"},
 		},
+		// Space-separated flag values: trailing whitespace AFTER a closed
+		// value token (matched-quote or unquoted) means the user has
+		// committed past the value and we should surface remaining flags
+		// — NOT keep showing the value-taking flag as still-in-progress.
+		// The equals-form cases above already cover the same shape; these
+		// lock the parallel behaviour for space-separated values.
+		{
+			name:     "git commit -m 'my message' ",
+			input:    "git commit -m 'my message' ",
+			expected: []string{"--amend", "--help", "-a --all"},
+		},
+		{
+			name:     "git commit -m \"my message\" ",
+			input:    "git commit -m \"my message\" ",
+			expected: []string{"--amend", "--help", "-a --all"},
+		},
+		{
+			name:     "git commit -m hello ",
+			input:    "git commit -m hello ",
+			expected: []string{"--amend", "--help", "-a --all"},
+		},
+		{
+			name:     "git commit --message 'my message' ",
+			input:    "git commit --message 'my message' ",
+			expected: []string{"--amend", "--help", "-a --all"},
+		},
+		// Unclosed-quote variant: the trailing space is INSIDE the open
+		// quote so the value isn't committed — must still show -m/--message
+		// as the active value-taking flag.
+		{
+			name:     "git commit -m \"my message  (unclosed quote)",
+			input:    "git commit -m \"my message ",
+			expected: []string{"-m --message"},
+		},
+		{
+			name:     "git commit -m 'my message  (unclosed quote)",
+			input:    "git commit -m 'my message ",
+			expected: []string{"-m --message"},
+		},
+		// Mid-typing value (no trailing space): user is still entering it,
+		// completion list should remain pinned to the active flag.
+		{
+			name:     "git commit -m hello (no trailing space)",
+			input:    "git commit -m hello",
+			expected: []string{"-m --message"},
+		},
 	}
 
 	for _, tc := range testCases {

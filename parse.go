@@ -52,7 +52,13 @@ func tokenize(input string) []token {
 			Unquoted: unquoted.String(),
 			Start:    tokenStart,
 			End:      end,
-			Closed:   closed || !quoted,
+			// Closed semantics: a token whose opener-quote was matched
+			// (closed), OR a token that did NOT open with a quote AND
+			// has no still-open inner quote at flush time. The
+			// inQuotes guard catches mid-token inner-quote forms like
+			// `--message="test ` where the token starts unquoted but
+			// opens an inner quote that never closes.
+			Closed: closed || (!quoted && !inQuotes),
 		}
 		if quoted {
 			tok.Quoted = true
