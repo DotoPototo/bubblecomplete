@@ -93,7 +93,14 @@ func (m *Model) saveHistoryToFile() error {
 		os.Remove(tmpPath)
 		return err
 	}
-	return os.Rename(tmpPath, m.historyFilePath)
+	if err := os.Rename(tmpPath, m.historyFilePath); err != nil {
+		// Rename can fail on Windows if the destination exists, on
+		// permission errors, or across filesystems. Clean up so repeated
+		// failures don't leave a trail of history-*.json.tmp files.
+		os.Remove(tmpPath)
+		return err
+	}
+	return nil
 }
 
 func (m *Model) loadHistoryFromFile() error {

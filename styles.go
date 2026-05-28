@@ -56,7 +56,7 @@ func DefaultStyles() Styles {
 	return Styles{
 		Input: InputStyles{
 			Valid:   lg.Foreground(validColor),
-			Invalid: lg.Foreground(defaultTextColor),
+			Invalid: lg.Foreground(mutedTextColor),
 		},
 		Completion: CompletionStyles{
 			Match:       lg.Bold(true).Foreground(accentColor),

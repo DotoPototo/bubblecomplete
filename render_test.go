@@ -96,10 +96,18 @@ func TestNoMatchHighlightWhenShowingAll(t *testing.T) {
 
 	// Rendered output should contain no match highlighting escapes
 	output := m.Render()
-	// With empty prefix, no completion name should have the MatchHighlightStyle applied
+	// With empty prefix, no completion name should have the MatchHighlightStyle applied.
+	// Locate the content rune in the rendered sample to derive the prefix —
+	// don't assume lipgloss always emits a "x\033[0m" suffix.
 	styledTest := m.Styles().Completion.Match.Render("x")
-	// Extract the ANSI prefix (everything before the content character)
-	highlightPrefix := styledTest[:len(styledTest)-len("x\033[0m")]
+	idx := strings.Index(styledTest, "x")
+	if idx < 0 {
+		t.Fatalf("Match style render %q did not contain the content rune", styledTest)
+	}
+	highlightPrefix := styledTest[:idx]
+	if highlightPrefix == "" {
+		t.Skip("Match style renders without any ANSI prefix; nothing distinctive to assert absence of")
+	}
 	if strings.Contains(output, highlightPrefix) {
 		t.Errorf("Expected no match highlight escape when showing all completions, but found one")
 	}
@@ -221,6 +229,21 @@ func TestCompletionBoxWidth_DescriptionsHidden(t *testing.T) {
 	if lineWidth != wantTitle {
 		t.Errorf("lineWidth with descriptions off = %d, want %d (descriptions should not contribute)", lineWidth, wantTitle)
 	}
+}
+
+func TestRenderCompletionRow_NarrowTerminalDoesNotPanic(t *testing.T) {
+	// completionsWidth < nameWidth would have passed negative values to
+	// lipgloss.Width / PaddingLeft before the clamp.
+	m, err := New(TestCommands, 4)
+	if err != nil {
+		t.Fatal(err)
+	}
+	row := completionRow{Name: "very-long-completion-name", Description: "desc", Kind: commandKind}
+	// titleWidth and completionsWidth deliberately smaller than the name's
+	// display width to exercise the negative-result paths.
+	_ = m.renderCompletionRow(row, 3, 5, false, false)
+	_ = m.renderCompletionRow(row, 3, 5, true, false)
+	_ = m.renderCompletionRow(row, 3, 5, false, true)
 }
 
 func TestRender_DescriptionsHidden(t *testing.T) {

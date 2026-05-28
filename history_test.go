@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -274,6 +275,45 @@ func TestSetHistoryFilePath_SurfacesNonIsNotExistStatErrors(t *testing.T) {
 	}
 	if m.Error() == nil {
 		t.Error("expected Error() to surface the non-IsNotExist stat failure, got nil")
+	}
+}
+
+func TestHistory_RenameFailureCleansUpTempFile(t *testing.T) {
+	// Force the rename to fail by making the destination a read-only
+	// directory after the file is configured. The temp file created by
+	// saveHistoryToFile must be removed on rename failure.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "history.json")
+
+	m, err := New(TestCommands, 100, WithHistoryFilePath(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Make the directory read-only so rename can't replace the destination.
+	if err := os.Chmod(dir, 0555); err != nil {
+		t.Skip("cannot chmod tmpdir read-only on this platform:", err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+
+	m = simulateTyping(t, m, "git status")
+	m, _ = pressEnter(t, m)
+	if m.Error() == nil {
+		t.Fatal("expected save failure to surface as Error")
+	}
+
+	// Restore writability so we can list the directory.
+	if err := os.Chmod(dir, 0755); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, e := range entries {
+		if strings.HasPrefix(e.Name(), "history-") && strings.HasSuffix(e.Name(), ".json.tmp") {
+			t.Errorf("temp file %q was not cleaned up after rename failure", e.Name())
+		}
 	}
 }
 

@@ -198,22 +198,27 @@ func (m Model) renderCompletionRow(row completionRow, titleWidth, completionsWid
 
 	var rowText string
 	if m.ShowDescriptions {
-		descText := truncateDescription(row.Description, completionsWidth-titleWidth)
+		descText := truncateDescription(row.Description, max(0, completionsWidth-titleWidth))
 		if !selected {
 			descText = m.styles.Completion.Description.Render(descText)
 		}
+		// Clamp width and padding to >= 0: a name wider than the title
+		// column (very narrow terminal, long completion name) would
+		// otherwise pass negative values to lipgloss.
+		descWidth := max(0, completionsWidth-nameWidth)
+		descPad := max(0, titleWidth-nameWidth)
 		rowText = lipgloss.JoinHorizontal(
 			lipgloss.Left,
 			" ",
 			name,
-			lg.Width(completionsWidth-nameWidth).PaddingLeft(titleWidth-nameWidth).Render(descText),
+			lg.Width(descWidth).PaddingLeft(descPad).Render(descText),
 			" ",
 		)
 	} else {
 		rowText = lipgloss.JoinHorizontal(
 			lipgloss.Left,
 			" ",
-			lg.Width(titleWidth).Render(name),
+			lg.Width(max(0, titleWidth)).Render(name),
 			" ",
 		)
 	}
