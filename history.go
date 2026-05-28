@@ -11,23 +11,17 @@ type historyFileJson struct {
 	History []string `json:"history"`
 }
 
-// SetHistoryFilePath sets the file path to the file used for persisting the command history.
-//
-// It creates the file if it doesn't exist. The directory of the file path must exist.
-// The file path must be a valid JSON file with a .json extension.
+// SetHistoryFilePath configures the file used for persisting the command
+// history. The path must end in ".json" and its parent directory must exist.
+// If the file doesn't exist it is created with an empty history. Existing
+// content is loaded and capped to HistoryLimit. Errors surface via Model.Error.
 func (m *Model) SetHistoryFilePath(path string) {
 	// Reset so Error() reflects the result of this call, not a prior failure.
 	m.err = nil
 
 	cleanPath := filepath.Clean(path)
-
-	file := filepath.Base(cleanPath)
-	if file == "" {
-		m.err = errors.New("invalid history file path")
-		return
-	}
-	if filepath.Ext(file) != ".json" {
-		m.err = errors.New("history file must be a JSON file")
+	if filepath.Ext(cleanPath) != ".json" {
+		m.err = errors.New("history file must have a .json extension")
 		return
 	}
 
@@ -41,8 +35,6 @@ func (m *Model) SetHistoryFilePath(path string) {
 
 	m.historyFilePath = cleanPath
 
-	// saveHistoryToFile creates the file via atomic rename, so we no longer
-	// pre-create with os.Create (which previously leaked its returned handle).
 	if _, err := os.Stat(cleanPath); os.IsNotExist(err) {
 		if err := m.saveHistoryToFile(); err != nil {
 			m.err = err

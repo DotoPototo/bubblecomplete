@@ -9,8 +9,11 @@ import (
 // completion, validation, and quote-error reporting to share a single parse.
 type token struct {
 	// Raw is the token text as typed, including surrounding quote characters.
+	// Sliced directly from the input so invalid UTF-8 bytes are preserved.
 	Raw string
-	// Unquoted is the token text with surrounding quote characters removed.
+	// Unquoted is the token text with quote characters removed. Note that
+	// invalid UTF-8 sequences in the input are normalized to U+FFFD here
+	// (unlike Raw which preserves bytes); use Raw when byte-fidelity matters.
 	Unquoted string
 	// Start is the byte offset in the input where the token begins.
 	Start int

@@ -231,6 +231,28 @@ func TestCompletionBoxWidth_DescriptionsHidden(t *testing.T) {
 	}
 }
 
+func TestRender_HistoryActivePathRendersJustTheInput(t *testing.T) {
+	// When historyIndex != -1 the user is walking the history; Render must
+	// short-circuit to just the input view, not the completion box. The
+	// branch was previously untested.
+	m, err := New(TestCommands, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.input.SetValue("git status")
+	m.historyIndex = 0 // simulate active history walk
+
+	out := m.Render()
+	if out == "" {
+		t.Error("Render returned empty string in history-active path")
+	}
+	// The completion box border (rounded) shouldn't appear when history
+	// navigation is active.
+	if strings.Contains(out, "╭") || strings.Contains(out, "╰") {
+		t.Errorf("Render produced completion border while history navigation active: %q", out)
+	}
+}
+
 func TestRenderCompletionRow_NarrowTerminalDoesNotPanic(t *testing.T) {
 	// completionsWidth < nameWidth would have passed negative values to
 	// lipgloss.Width / PaddingLeft before the clamp.
@@ -364,11 +386,12 @@ func TestCalculateCompletionsOffset(t *testing.T) {
 			want: 0,
 		},
 		{
-			name: "tiny terminal overflow currently yields negative offset",
-			// Documents current behavior — offset can go negative when completions
-			// exceed the terminal width by more than the prompt + token can absorb.
+			name: "tiny terminal overflow clamps offset to zero",
+			// When completions exceed the terminal width by more than the
+			// prompt + token can absorb, offset would otherwise go negative
+			// and produce a negative lipgloss Margin. Clamped to 0.
 			width: 10, input: "g", completions: strings.Repeat("x", 15), indent: true,
-			want: 10 - 15 - 2,
+			want: 0,
 		},
 	}
 	for _, c := range cases {

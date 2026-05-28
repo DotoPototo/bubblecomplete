@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"runtime/pprof"
 
 	bubblecomplete "github.com/dotopototo/bubblecomplete"
@@ -26,7 +27,7 @@ type model struct {
 
 func initialModel() tea.Model {
 	home, _ := os.UserHomeDir()
-	historyFilePath := home + "/.bubblecomplete_history.json"
+	historyFilePath := filepath.Join(home, ".bubblecomplete_history.json")
 
 	bc, err := bubblecomplete.New(
 		demoCommands,

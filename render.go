@@ -283,6 +283,11 @@ func (m Model) calculateCompletionsOffset(completions string) int {
 		offset = m.width - lipgloss.Width(completions) - 2
 	}
 
+	// Clamp to >= 0 so a too-wide completions box on a tiny terminal doesn't
+	// hand a negative margin to lipgloss (would render off-screen).
+	if offset < 0 {
+		offset = 0
+	}
 	return offset
 }
 
