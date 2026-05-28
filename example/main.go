@@ -107,7 +107,9 @@ func main() {
 		if err != nil {
 			log.Fatal(err)
 		}
-		pprof.StartCPUProfile(cpu)
+		if err := pprof.StartCPUProfile(cpu); err != nil {
+			log.Fatal(err)
+		}
 		// Defers run LIFO; write snapshots after CPU profiling has stopped.
 		defer writeSnapshotProfiles()
 		defer pprof.StopCPUProfile()
@@ -125,7 +127,7 @@ func writeSnapshotProfiles() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer mem.Close()
+	defer func() { _ = mem.Close() }()
 	if err := pprof.WriteHeapProfile(mem); err != nil {
 		log.Fatal(err)
 	}
@@ -134,7 +136,7 @@ func writeSnapshotProfiles() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	defer goroutines.Close()
+	defer func() { _ = goroutines.Close() }()
 	if err := pprof.Lookup("goroutine").WriteTo(goroutines, 0); err != nil {
 		log.Fatal(err)
 	}

@@ -1,0 +1,78 @@
+version: "2"
+
+run:
+  timeout: 5m
+
+linters:
+  default: standard
+  enable:
+    # Correctness
+    - bodyclose
+    - durationcheck
+    - errorlint
+    - exhaustive
+    - gocheckcompilerdirectives
+    - nilerr
+    - nilnesserr
+    - reassign
+    - rowserrcheck
+    - sqlclosecheck
+
+    # Performance
+    - prealloc
+
+    # Style / readability that's actually load-bearing here
+    - misspell
+    - unconvert
+    - unparam
+    - usestdlibvars
+    - wastedassign
+
+    # Security beyond gosec defaults
+    - gosec
+
+    # Force //nolint to be specific and justified
+    - nolintlint
+
+  settings:
+    gosec:
+      excludes:
+        # Test fixtures intentionally use 0644/0755 and dynamic paths via t.TempDir().
+        - G304
+        - G306
+        - G302
+    exhaustive:
+      default-signifies-exhaustive: true
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+
+  exclusions:
+    rules:
+      # Bubble Tea's Update pattern uses value receivers that return the
+      # mutated model; the public Set* helpers necessarily use pointer
+      # receivers. The mixed shape is intentional, not a bug.
+      - text: "the methods of \"(Model|Command|Flag|PositionalArgument)\""
+        linters: [recvcheck]
+
+      # Test fixtures don't need every lint applied. Suppress the noisy
+      # ones rather than introducing per-line nolint comments everywhere.
+      - path: _test\.go
+        linters:
+          - gosec
+          - errcheck
+          - unparam
+          - gosmopolitan
+
+      # Key handler signatures all return (Model, tea.Cmd) for uniformity
+      # with Bubble Tea conventions, even where the current implementation
+      # never produces a Cmd.
+      - path: bubblecomplete\.go
+        text: "result 1 \\(charm.land/bubbletea/v2.Cmd\\) is always nil"
+        linters: [unparam]
+
+formatters:
+  enable:
+    - gofmt
+    - goimports

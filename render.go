@@ -267,8 +267,6 @@ func (m Model) calculateCompletionsOffset(completions string) int {
 	// that started with the prompt.
 	promptWidth := lipgloss.Width(m.input.Prompt)
 
-	offset := 0
-
 	// Offset anchors to the end of the input when we're about to start a
 	// fresh part (trailing space and the previous part is either a bare
 	// word or a closed-quote token); otherwise anchor to the start of the
@@ -277,12 +275,11 @@ func (m Model) calculateCompletionsOffset(completions string) int {
 	endsInSpace := strings.HasSuffix(input, " ")
 	lastPartIsBareWord := !strings.Contains(lastPart, " ")
 	startingNewPart := endsInSpace && (lastPartIsBareWord || stringEndsInQuote(lastPart))
-	if startingNewPart {
-		offset = (promptWidth + lipgloss.Width(input)) % m.width
-	} else {
-		trimmedInput := input[:strings.LastIndex(input, lastPart)]
-		offset = (promptWidth + lipgloss.Width(trimmedInput)) % m.width
+	anchor := input
+	if !startingNewPart {
+		anchor = input[:strings.LastIndex(input, lastPart)]
 	}
+	offset := (promptWidth + lipgloss.Width(anchor)) % m.width
 
 	offset += m.CompletionsOffset
 	if offset+lipgloss.Width(completions) > m.width {

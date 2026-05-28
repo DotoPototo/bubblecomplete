@@ -187,8 +187,12 @@ func looksLikeFlagValue(arg argument, next string) bool {
 	case FloatArgument:
 		_, err := strconv.ParseFloat(next, 64)
 		return err == nil
+	default:
+		// String/Bool/File/Dir/FileDir flags must not consume a token that
+		// starts with "-" as their value; the caller will surface a
+		// missing-value error instead.
+		return false
 	}
-	return false
 }
 
 func validateShortFlags(part string, parts []string, i *int, parentCmd *Command, globalFlags []*Flag) error {

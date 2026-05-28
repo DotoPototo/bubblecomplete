@@ -390,8 +390,9 @@ func isEnteringFlagValue(
 
 	// If we're entering a flag value with an equals sign between the flag and value
 	if strings.Contains(lastArg, "=") {
-		// (!A) || (A && !B)  reduces to  !(A && B)
-		if !(stringEndsInQuoteWithoutEquals(lastArg) && strings.HasSuffix(input, " ")) {
+		// Skip when the token is a fully-closed quoted value already followed
+		// by a space — that means we've moved past it, not into it.
+		if !stringEndsInQuoteWithoutEquals(lastArg) || !strings.HasSuffix(input, " ") {
 			for _, flag := range allFlags {
 				// If the flag isn't a PowerShell flag, ensure it's a long flag
 				if flag.PsFlag == "" && !strings.HasPrefix(lastArg, "--") {
@@ -545,7 +546,7 @@ func inputContainsCompletedToken(input, s string) bool {
 // occurrence of the same value elsewhere in the input.
 func inputContainsUnquotedTokenBeforeLast(input, s string) bool {
 	tokens := tokenize(input)
-	for i := 0; i < len(tokens)-1; i++ {
+	for i := range len(tokens) - 1 {
 		if !tokens[i].Quoted && tokens[i].Unquoted == s {
 			return true
 		}
@@ -590,7 +591,7 @@ func containsShortFlag(command string, flag string) bool {
 		if !ok {
 			continue
 		}
-		for i := 0; i < len(body); i++ {
+		for i := range len(body) {
 			if body[i] == flagChar {
 				return true
 			}
@@ -635,7 +636,7 @@ func shortFlagBody(text string) (string, bool) {
 		return "", false
 	}
 	body := text[1:]
-	for i := 0; i < len(body); i++ {
+	for i := range len(body) {
 		if !isASCIILetter(body[i]) {
 			return "", false
 		}

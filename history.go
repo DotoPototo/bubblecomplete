@@ -3,9 +3,19 @@ package bubblecomplete
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
+	"io"
 	"os"
 	"path/filepath"
+	"slices"
 )
+
+// maxHistoryFileSize caps how many bytes loadHistoryFromFile will read off
+// disk. A realistic history with HistoryLimit=100 and 1KB entries fits in
+// ~100KB; 10MB is many orders of magnitude beyond that. The cap protects
+// hosts from a tampered or accidentally enormous history file pinning the
+// process's memory on startup.
+const maxHistoryFileSize = 10 << 20
 
 type historyFileJSON struct {
 	History []string `json:"history"`
@@ -15,6 +25,12 @@ type historyFileJSON struct {
 // history. The path must end in ".json" and its parent directory must exist.
 // If the file doesn't exist it is created with an empty history. Existing
 // content is loaded and capped to HistoryLimit. Errors surface via Model.Error.
+//
+// The path is trusted. The host is responsible for choosing a location the
+// current user controls — entries are loaded verbatim and fed to the input's
+// suggestion list, so a tampered file could surface unexpected strings
+// (including terminal-control sequences) to the renderer. Loads reject files
+// larger than 10 MiB to bound memory use.
 func (m *Model) SetHistoryFilePath(path string) {
 	// Reset so Error() reflects the result of this call, not a prior failure.
 	m.err = nil
@@ -76,32 +92,48 @@ func (m *Model) saveHistoryToFile() error {
 		return err
 	}
 	tmpPath := tmp.Name()
+	// Cleanup-path errors below are intentionally discarded: the primary
+	// error is already what the caller needs to see, and best-effort
+	// removal of the temp file is enough — leaking a tmp file is not worth
+	// shadowing the real failure.
 	if _, err := tmp.Write(jsonData); err != nil {
-		tmp.Close()
-		os.Remove(tmpPath)
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	if err := tmp.Close(); err != nil {
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	if err := os.Rename(tmpPath, m.historyFilePath); err != nil {
 		// Rename can fail on Windows if the destination exists, on
 		// permission errors, or across filesystems. Clean up so repeated
 		// failures don't leave a trail of history-*.json.tmp files.
-		os.Remove(tmpPath)
+		_ = os.Remove(tmpPath)
 		return err
 	}
 	return nil
 }
 
 func (m *Model) loadHistoryFromFile() error {
-	data, err := os.ReadFile(m.historyFilePath)
+	f, err := os.Open(m.historyFilePath)
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
 			return nil
 		}
 		return err
+	}
+	defer func() { _ = f.Close() }()
+
+	// Read at most maxHistoryFileSize+1 so we can distinguish "exactly the
+	// cap" (valid) from "exceeds the cap" (rejected) without a separate
+	// Stat call.
+	data, err := io.ReadAll(io.LimitReader(f, maxHistoryFileSize+1))
+	if err != nil {
+		return err
+	}
+	if len(data) > maxHistoryFileSize {
+		return fmt.Errorf("history file exceeds %d bytes", maxHistoryFileSize)
 	}
 	// Tolerate an empty file as empty history.
 	if len(data) == 0 {
@@ -117,7 +149,10 @@ func (m *Model) loadHistoryFromFile() error {
 
 	m.History = jsonData.History
 	if m.HistoryLimit > 0 && len(m.History) > m.HistoryLimit {
-		m.History = m.History[:m.HistoryLimit]
+		// Clone rather than re-slice so the unreachable tail of the
+		// unmarshalled array can be GC'd. With a small HistoryLimit and
+		// a large file, the difference is the working set we pin.
+		m.History = slices.Clone(m.History[:m.HistoryLimit])
 	}
 	if m.HistoryLimit <= 0 {
 		m.History = nil

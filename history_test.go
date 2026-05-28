@@ -1,6 +1,7 @@
 package bubblecomplete
 
 import (
+	"bytes"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -160,6 +161,33 @@ func TestHistory_LoadEmptyFileIsNotError(t *testing.T) {
 	}
 	if len(m.History) != 0 {
 		t.Errorf("expected empty history, got %v", m.History)
+	}
+}
+
+func TestHistory_LoadRejectsOversizedFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "history.json")
+
+	// One byte over the cap is enough to trigger rejection. Use a JSON
+	// shape that would otherwise unmarshal cleanly so any future failure
+	// proves the size check fired (not malformed JSON).
+	prefix := []byte(`{"history":["`)
+	suffix := []byte(`"]}`)
+	padding := bytes.Repeat([]byte("a"), (10<<20)-len(prefix)-len(suffix)+1)
+	payload := append(append(prefix, padding...), suffix...)
+	if err := os.WriteFile(path, payload, 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	m, err := New(TestCommands, 100, WithHistoryFilePath(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Error() == nil {
+		t.Fatal("expected Error() to report oversized file, got nil")
+	}
+	if !strings.Contains(m.Error().Error(), "exceeds") {
+		t.Errorf("expected size-cap error, got %v", m.Error())
 	}
 }
 
