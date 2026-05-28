@@ -85,8 +85,8 @@ func validateCommandInput(input string, commands []*Command) error {
 				// and must surface to the user.
 				var ve *ValidationError
 				if errors.As(err, &ve) && ve.Kind == UnknownFlag {
-					if err := validateFlag(part, parts, &i, parentCmd, globalFlags); err != nil {
-						return err
+					if fallbackErr := validateFlag(part, parts, &i, parentCmd, globalFlags); fallbackErr != nil {
+						return fallbackErr
 					}
 				} else {
 					return err
