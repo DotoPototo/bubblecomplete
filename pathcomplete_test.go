@@ -494,12 +494,13 @@ func TestGenerateCandidates_CaseSensitivity(t *testing.T) {
 
 	cands := generateCandidates(candidateRequest{kind: FileArgument, tokenPrefix: "", userPrefix: "", openingQuote: 0, base: "BET", entry: entry, limit: 50, hiddenFiles: false, parent: dir})
 	if runtime.GOOS == "linux" {
-		// Case-sensitive: only "Beta/" matches "BET", not "beta.txt".
+		// Case-sensitive: uppercase "BET" matches neither "beta.txt" nor
+		// "Beta/" because the third byte differs (t vs T).
 		if containsName(cands, "beta.txt") {
 			t.Errorf("Linux case-sensitive: beta.txt should NOT match 'BET'")
 		}
-		if !containsName(cands, "Beta/") {
-			t.Errorf("Linux case-sensitive: Beta/ should match 'BET'")
+		if containsName(cands, "Beta/") {
+			t.Errorf("Linux case-sensitive: Beta/ should NOT match 'BET'")
 		}
 	} else if !containsName(cands, "beta.txt") || !containsName(cands, "Beta/") {
 		// Case-insensitive (macOS/Windows heuristic): both surface.
