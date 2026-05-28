@@ -123,6 +123,124 @@ func FuzzGetCompletions(f *testing.F) {
 	})
 }
 
+// quoteSeedInputs covers the quote/path inputs worth running under the
+// stripQuotes and resolvePath fuzz targets: bare values, matched and
+// unbalanced quotes, mixed quote chars, tilde forms, separators, and the
+// pathological "two quotes" cases. Standalone from seedInputs because the
+// path-resolver targets exercise narrower-but-still-tricky inputs.
+var quoteSeedInputs = []string{
+	"",
+	"a",
+	`"`,
+	`'`,
+	`""`,
+	`''`,
+	`"a"`,
+	`'a'`,
+	`"a`,
+	`'a`,
+	`"a'`,
+	`'a"`,
+	`"foo"bar"`,
+	"~",
+	"~/",
+	"~/foo",
+	"~/foo/bar",
+	"~user/foo",
+	"./foo",
+	"../foo",
+	"/abs/path",
+	"/",
+	"foo",
+	"日本",
+	"\x00",
+}
+
+func FuzzStripQuotes(f *testing.F) {
+	for _, s := range quoteSeedInputs {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, s string) {
+		unquoted, opener := stripQuotes(s)
+
+		// Invariant 1: opener is one of {0, '"', '\''}; nothing else can leak.
+		if opener != 0 && opener != '"' && opener != '\'' {
+			t.Errorf("stripQuotes returned non-quote opener %q for %q", opener, s)
+		}
+
+		// Invariant 2: when opener is 0, the result is the input verbatim.
+		// stripQuotes never strips anything from a non-quote-led input.
+		if opener == 0 && unquoted != s {
+			t.Errorf("opener=0 but input changed: %q → %q", s, unquoted)
+		}
+
+		// Invariant 3: when opener is non-zero, the input started with that
+		// quote and the unquoted text does not start with another opener
+		// of the same kind. Catches accidental double-strip.
+		if opener != 0 {
+			if len(s) == 0 || rune(s[0]) != opener {
+				t.Errorf("opener %q but input %q didn't start with it", opener, s)
+			}
+			// stripQuotes removes at most two bytes (opener + matching
+			// closer); the result length must be within [len(s)-2, len(s)-1].
+			if len(unquoted) < len(s)-2 || len(unquoted) > len(s)-1 {
+				t.Errorf("stripQuotes removed unexpected byte count: %q (len %d) → %q (len %d)",
+					s, len(s), unquoted, len(unquoted))
+			}
+		}
+	})
+}
+
+func FuzzResolvePath(f *testing.F) {
+	for _, s := range quoteSeedInputs {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, typed string) {
+		const (
+			cwd  = "/work"
+			home = "/Users/jane"
+		)
+
+		// Run both expandTilde modes — neither must panic, hang, or return
+		// nonsensical offsets for any input.
+		for _, expand := range []bool{true, false} {
+			fullClean, parent, base, userPrefix := resolvePath(typed, cwd, home, expand)
+
+			// Invariant 1: empty input → all empty returns.
+			if typed == "" {
+				if fullClean != "" || parent != "" || base != "" || userPrefix != "" {
+					t.Errorf("empty input should return empty: full=%q parent=%q base=%q prefix=%q",
+						fullClean, parent, base, userPrefix)
+				}
+				continue
+			}
+
+			// Invariant 2: userPrefix is a prefix of the typed string after
+			// the bare-"~" normalisation (which converts "~" to "~/").
+			normalised := typed
+			if normalised == "~" {
+				normalised = "~/"
+			}
+			if userPrefix != "" && !startsWith(normalised, userPrefix) {
+				t.Errorf("userPrefix %q is not a prefix of normalised typed %q (raw %q)",
+					userPrefix, normalised, typed)
+			}
+
+			// Invariant 3: parent ends with a separator when base is empty.
+			// This is the contract candidate generation relies on.
+			if base == "" && parent != "" && !endsInSeparator(parent) {
+				t.Errorf("base is empty but parent %q doesn't end in a separator", parent)
+			}
+		}
+	})
+}
+
+// startsWith is a fuzz-helper alternative to strings.HasPrefix so the fuzz
+// target stays free of the strings package import within this file.
+func startsWith(s, prefix string) bool {
+	return len(s) >= len(prefix) && s[:len(prefix)] == prefix
+}
+
 func FuzzRender(f *testing.F) {
 	for _, s := range seedInputs {
 		f.Add(s)

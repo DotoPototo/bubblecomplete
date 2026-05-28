@@ -39,6 +39,7 @@ func initialModel() tea.Model {
 		bubblecomplete.WithCompletionRows(7),
 		bubblecomplete.WithHistoryLimit(50),
 		bubblecomplete.WithHistoryFilePath(historyFilePath),
+		bubblecomplete.WithFilesystemCompletions(true),
 	)
 	if err != nil {
 		log.Fatal(err)
