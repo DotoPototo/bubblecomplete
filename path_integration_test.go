@@ -447,41 +447,147 @@ func TestTabAutoAcceptDrillsIntoUniqueDir(t *testing.T) {
 	}
 }
 
-// TestRender_OverlayBypassedDuringCompletionCycling locks in that the
-// overlay is skipped while the user is cycling Tab completions. Without
-// the bypass, the frozen pathState offsets would mis-style the cycled
-// preview value.
-func TestRender_OverlayBypassedDuringCompletionCycling(t *testing.T) {
+// TestRender_OverlayInactiveDuringFileCycling locks in the natural
+// interaction between the bash-style trailing-space-after-files rule and
+// the per-cycle pathState refresh: cycled FILE candidates have a trailing
+// space, which makes activeFileArgument inactive, which skips the
+// overlay. Users cycling between file candidates see no validity colour
+// — but the cycled values are all real files by construction (they came
+// from generateCandidates' kind filter), so the missing colour carries
+// no information.
+func TestRender_OverlayInactiveDuringFileCycling(t *testing.T) {
 	dir := t.TempDir()
-	// Two files with the same prefix → Tab enters cycling state. A single
-	// match would auto-accept and skip cycling entirely.
+	// Two files with the same prefix → Tab enters cycling state.
 	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
 	mustWriteFile(t, filepath.Join(dir, "fox.txt"))
 
 	// Width must comfortably exceed the temp-dir path or the overflow
-	// guard, not the cycling bypass, would be what produces the
-	// no-overlay state — defeating the test.
+	// guard (not the trailing-space-makes-inactive interaction) would be
+	// what produces the no-overlay state — defeating the test.
 	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
 	if err != nil {
 		t.Fatal(err)
 	}
 	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "fo"))
 
-	beforeTab := m.renderedInput()
-	rawBeforeTab := m.input.View()
-	if beforeTab == rawBeforeTab {
-		t.Fatal("setup: expected overlay to be applied before Tab (width may be too small)")
+	if m.renderedInput() == m.input.View() {
+		t.Fatal("setup: expected overlay to be applied before Tab")
 	}
 
-	// Tab to begin cycling — input.Value updates to the candidate, but
-	// pathState stays frozen. renderedInput should bypass the overlay.
 	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
 	if m.completionHolder == "" {
 		t.Fatal("setup: expected Tab to enter cycling state")
 	}
+	// Cycled file value ends in trailing space → pathState refresh sees
+	// HasSuffix(input, " ") and returns inactive. Overlay skipped.
+	if m.pathState.active {
+		t.Errorf("expected pathState inactive after cycling to a file (trailing space); active=true")
+	}
 	if m.renderedInput() != m.input.View() {
-		t.Errorf("overlay should be bypassed during cycling:\n  got %q\n want %q",
+		t.Errorf("overlay should be skipped for cycled file (trailing space):\n  got %q\n want %q",
 			m.renderedInput(), m.input.View())
+	}
+}
+
+// TestRender_OverlayAppliesDuringDirCycling is the dir-specific counterpart
+// to the file-cycling test: cycled directory candidates end with "/" (no
+// trailing space), so pathState refresh keeps the overlay active with the
+// correct cycled-value offsets. The overlay therefore reflects the
+// classification of the cycled directory candidate (partial for FileArg
+// drill-down, valid for DirArg target).
+func TestRender_OverlayAppliesDuringDirCycling(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdir(t, filepath.Join(dir, "doc1"))
+	mustMkdir(t, filepath.Join(dir, "doc2"))
+
+	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, "cd "+filepath.Join(dir, "doc"))
+	if !m.pathState.active {
+		t.Fatal("setup: expected active pathState for partial dir match")
+	}
+
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.completionHolder == "" {
+		t.Fatal("setup: expected Tab to enter cycling state (multiple dir candidates)")
+	}
+	// pathState should be refreshed to reflect the cycled value
+	// "cd <dir>/doc1/" (or doc2). base is empty (trailing /), DirArgument
+	// classifies as pathValid.
+	if !m.pathState.active {
+		t.Errorf("expected pathState ACTIVE during dir cycling; active=false")
+	}
+	if m.pathState.validity != pathValid {
+		t.Errorf("cycled dir under DirArgument should classify pathValid; got %d", m.pathState.validity)
+	}
+	if m.renderedInput() == m.input.View() {
+		t.Errorf("overlay should apply during dir cycling, but renderedInput matches raw input.View")
+	}
+
+	// Forward-Tab to the next dir candidate. Validity stays pathValid (both
+	// are real dirs under DirArgument) — but the cycled value differs, so
+	// the rendered output must differ between the two cycle states.
+	firstCycleRender := m.renderedInput()
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.renderedInput() == firstCycleRender {
+		t.Errorf("cycling to second dir candidate should change the rendered overlay coverage")
+	}
+}
+
+// TestRender_OverlayRefreshesOnCycleRevert exercises the wrap-to-original
+// path: with two candidates, three forward Tabs cycle index 0 → 1 → -1
+// (revert to completionHolder). After revert, pathState must reflect the
+// ORIGINAL input — not the last-cycled candidate — because the
+// input-changed branch later in Update won't fire (lastInput == restored
+// value).
+func TestRender_OverlayRefreshesOnCycleRevert(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdir(t, filepath.Join(dir, "doc1"))
+	mustMkdir(t, filepath.Join(dir, "doc2"))
+
+	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	original := "cd " + filepath.Join(dir, "doc")
+	m = simulateTyping(t, m, original)
+	if !m.pathState.active {
+		t.Fatal("setup: expected active pathState for partial dir match")
+	}
+	// Capture the *original* partial-state offsets so we can compare them
+	// after the revert. The original token is "doc" (3 chars), base "doc".
+	origValueStart := m.pathState.valueStart
+	origValueEnd := m.pathState.valueEnd
+	origBase := m.pathState.base
+	if m.pathState.validity != pathPartial {
+		t.Fatalf("setup: expected pathPartial for original, got %d", m.pathState.validity)
+	}
+
+	// Three Tabs: 0, 1, revert.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // index 0
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // index 1
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab}) // wraps to -1, revert to original
+
+	if m.input.Value() != original {
+		t.Fatalf("after wrap-to-revert: input %q, want original %q", m.input.Value(), original)
+	}
+	if m.completionHolder != "" {
+		t.Errorf("after revert: completionHolder should be cleared, got %q", m.completionHolder)
+	}
+	if !m.pathState.active {
+		t.Fatal("pathState should be active after revert (matches original partial state)")
+	}
+	if m.pathState.validity != pathPartial {
+		t.Errorf("after revert: validity should reflect original partial state, got %d", m.pathState.validity)
+	}
+	if m.pathState.valueStart != origValueStart || m.pathState.valueEnd != origValueEnd {
+		t.Errorf("after revert: offsets %d..%d, want original %d..%d (offsets should track restored value)",
+			m.pathState.valueStart, m.pathState.valueEnd, origValueStart, origValueEnd)
+	}
+	if m.pathState.base != origBase {
+		t.Errorf("after revert: base %q, want original %q", m.pathState.base, origBase)
 	}
 }
 

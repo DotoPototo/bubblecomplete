@@ -300,7 +300,7 @@ The invariant the feature guarantees, *when the overlay is shown*: green ⇔ Ent
 - **Case sensitivity** is a heuristic: case-sensitive on Linux, case-insensitive on macOS and Windows. APFS case-sensitive volumes on macOS will surface completions the filesystem won't actually open.
 - **Unicode normalisation** on macOS HFS+: the filesystem stores filenames in NFD form, but users typically type in NFC. A typed `~/Documents/résumé.pdf` (NFC) won't match the on-disk `résumé.pdf` (NFD) and the path will silently colour red. Not fixed in v1; would require pulling in `golang.org/x/text/unicode/norm`.
 - **Inputs wider than the terminal** lose the validity overlay (the underlying textinput's scroll window can't be reliably indexed into for offset math).
-- **During Tab cycling** the overlay is bypassed — the frozen `pathState` offsets refer to the pre-cycling input, so styling the cycled preview would mis-align. The overlay returns after the user accepts (or cancels) cycling.
+- **During Tab cycling**, the overlay refreshes per-cycle and tracks the cycled candidate's validity. Directory candidates (no trailing space) show their classification per cycle — `pathPartial` (mid-navigation) under `FileArgument`, `pathValid` under `DirArgument`. File candidates carry a trailing space (bash-style "token done"), which makes `activeFileArgument` inactive for that preview — files cycle without an overlay colour. The cycled file values are all real files by construction (they survived the candidate kind filter), so the missing colour signals nothing.
 
 ## Roadmap
 

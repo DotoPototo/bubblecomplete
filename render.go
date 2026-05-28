@@ -32,17 +32,20 @@ func (m Model) Render() string {
 
 // renderedInput returns m.input.View() with the path-validity overlay
 // applied when m.pathState is active. The overlay is skipped when:
-//   - the user is cycling completions (pathState is frozen and its byte
-//     offsets refer to the pre-cycling input; styling against the cycled
-//     preview value would mis-style or panic)
 //   - the rendered input width exceeds m.width (textinput's internal
 //     scroll window obscures cell offsets and we'd paint garbage)
 //   - the stored offsets are out of range for the current value
 //     (defensive — shouldn't fire under correct lifecycle but cheap to
 //     check)
+//
+// During Tab cycling the overlay does apply: keyTab refreshes pathState
+// after every multi-match SetValue so the offsets and validity match the
+// cycled preview value. Cycling between candidates of different validity
+// (e.g. a valid file vs a directory under FileArgument) therefore shows
+// different colours per Tab.
 func (m Model) renderedInput() string {
 	base := m.input.View()
-	if !m.pathState.active || m.completionHolder != "" {
+	if !m.pathState.active {
 		return base
 	}
 	if m.pathState.valueStart >= m.pathState.valueEnd {

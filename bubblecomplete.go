@@ -263,6 +263,14 @@ func (m Model) keyTab(forward bool) (Model, tea.Cmd) {
 	if m.completionIndex == -1 {
 		m.input.SetValue(m.completionHolder)
 		m.completionHolder = ""
+		// Refresh pathState against the restored value. The input-changed
+		// branch later in Update won't help here: the restored value
+		// equals m.lastInput (set before cycling began), so the branch
+		// skips. Without this refresh, pathState would still belong to
+		// the last-cycled preview value — stale offsets, wrong validity,
+		// or (after a cycled file's trailing space made it inactive) no
+		// overlay at all on a path that should now show partial/invalid.
+		m.recomputePathState()
 		return m, nil
 	}
 
@@ -285,20 +293,31 @@ func (m Model) keyTab(forward bool) (Model, tea.Cmd) {
 	m.input.SetValue(pretext + m.completions[m.completionIndex].getAutocomplete())
 	m.input.CursorEnd()
 
-	// Single-match acceptance: when there's exactly one completion to choose
-	// from, treat Tab as a final accept rather than entering cycling state.
-	// Clearing completionHolder here means the input-changed branch later
-	// in this same Update call (after textinput.Update) will recompute
-	// against the new input value — populating fresh completions and
-	// pathState for the just-accepted text. The next Tab then cycles
-	// among those new candidates, which for a directory match enables the
-	// shell-style drill-down: Tab on "cd Do" with a unique "Documents/"
-	// candidate accepts it AND repopulates with Documents/'s children, so
-	// the second Tab descends one level.
 	if len(m.completions) == 1 {
+		// Single-match acceptance: treat Tab as a final accept rather than
+		// entering cycling state. Clearing completionHolder here means the
+		// input-changed branch later in this same Update call (after
+		// textinput.Update) will recompute against the new input value —
+		// populating fresh completions and pathState for the just-accepted
+		// text. The next Tab then cycles among those new candidates, which
+		// for a directory match enables the shell-style drill-down: Tab
+		// on "cd Do" with a unique "Documents/" candidate accepts it AND
+		// repopulates with Documents/'s children, so the second Tab
+		// descends one level.
 		m.completionHolder = ""
 		m.completionIndex = -1
 		m.showAll = false
+	} else {
+		// Multi-match cycling: completionHolder stays set so the user can
+		// continue cycling or revert to the original via Shift+Tab past
+		// the start. The input-changed branch is therefore skipped on the
+		// next Update tick. Refresh pathState here so the render overlay
+		// reflects the *cycled* value's validity — without this, the
+		// frozen offsets and validity would mis-style the preview (the
+		// old cycling-bypass behaviour in renderedInput). m.completions
+		// is intentionally NOT recomputed: the cycling list is the
+		// candidates we entered cycling with.
+		m.recomputePathState()
 	}
 	return m, nil
 }
