@@ -173,6 +173,18 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 		return errInvalidArgumentToken(part)
 	}
 
+	// Per Flag.Validate, short flags must be ASCII letters. A token whose
+	// body contains anything else (digits, punctuation, multi-byte runes)
+	// can't be a valid short or combined-short flag — and iterating it
+	// byte-by-byte below would produce confusing per-byte UnknownFlag
+	// errors (e.g. "-é" becomes "-\xc3" + "-\xa9"). Reject up-front as
+	// MalformedFlag so the user sees a single coherent error.
+	for k := 0; k < len(combinedFlags); k++ {
+		if !isASCIILetter(combinedFlags[k]) {
+			return errInvalidArgumentToken(part)
+		}
+	}
+
 	for j := 0; j < len(combinedFlags); j++ {
 		argName := "-" + string(combinedFlags[j])
 		argValue := ""

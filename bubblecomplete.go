@@ -299,8 +299,14 @@ func (m Model) keyEnter() (Model, tea.Cmd) {
 		}
 	}
 	m = m.resetModel()
-	// Direct assignment so a successful save clears any prior Error().
-	m.err = m.saveHistoryToFile()
+	// When history is disabled, skip the save entirely — otherwise a
+	// configured history file would get rewritten to {"history":null} on
+	// every Enter. Clear any prior error since no operation was attempted.
+	if m.HistoryLimit > 0 {
+		m.err = m.saveHistoryToFile()
+	} else {
+		m.err = nil
+	}
 	m.input.SetSuggestions(m.History)
 
 	return m, func() tea.Msg {

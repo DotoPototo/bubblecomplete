@@ -370,6 +370,21 @@ func TestValidationError_MalformedFlagSurfaces(t *testing.T) {
 			input:   "cat -fn ./README.md",
 			wantMsg: "flag '-f' must be the last in a combined group",
 		},
+		{
+			// Per the ASCII-letter short-flag rule, "-1" can never be a valid
+			// short flag — must surface as MalformedFlag, not the byte-by-byte
+			// UnknownFlag confusion the old code produced.
+			name:    "digit body rejected as malformed not unknown",
+			input:   "git -1",
+			wantMsg: "invalid argument: -1",
+		},
+		{
+			// Multi-byte rune body would have produced per-byte pseudo-flags
+			// like "-\xc3" + "-\xa9" under the old per-byte iteration.
+			name:    "multi-byte rune body rejected as malformed",
+			input:   "git -é",
+			wantMsg: "invalid argument: -é",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

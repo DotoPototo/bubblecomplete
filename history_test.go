@@ -217,6 +217,44 @@ func TestError_ClearsAfterSuccessfulOperation(t *testing.T) {
 	}
 }
 
+func TestHistory_DisabledLimitSkipsFileSave(t *testing.T) {
+	// With HistoryLimit <= 0 history is disabled. If a file path is still
+	// configured, Enter must NOT rewrite the file to {"history":null} on
+	// every submit — the on-disk content from before the disable should
+	// remain intact.
+	dir := t.TempDir()
+	path := filepath.Join(dir, "history.json")
+
+	// Pre-populate the file with a known content using a normal-limit model.
+	m, err := New(TestCommands, 100, WithHistoryFilePath(path), WithHistoryLimit(5))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, "git status")
+	m, _ = pressEnter(t, m)
+
+	before, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// Now disable history at runtime and submit again.
+	m.HistoryLimit = 0
+	m = simulateTyping(t, m, "git stash list")
+	m, _ = pressEnter(t, m)
+
+	after, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(before) != string(after) {
+		t.Errorf("history file was rewritten while history disabled:\nbefore: %s\nafter:  %s", before, after)
+	}
+	if m.Error() != nil {
+		t.Errorf("Error() should be nil after disabled-history Enter, got %v", m.Error())
+	}
+}
+
 func TestSetHistoryFilePath_SurfacesNonIsNotExistStatErrors(t *testing.T) {
 	// Create a regular file then point WithHistoryFilePath at a path that
 	// would require traversing it as a directory. os.Stat on that parent
