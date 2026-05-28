@@ -253,6 +253,80 @@ func TestRender_HistoryActivePathRendersJustTheInput(t *testing.T) {
 	}
 }
 
+func TestRenderCompletionRow_LongNameTruncates(t *testing.T) {
+	// A completion name longer than the box's content width must be
+	// truncated with an ellipsis so the row fits inside completionsWidth.
+	// Without truncation the row overflows the box border, which is
+	// especially visible for long path completions like a full filesystem
+	// path on a narrow terminal.
+	m, err := New(TestCommands, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	longName := strings.Repeat("a", 60)
+	row := completionRow{Name: longName, Description: "ignored", Kind: argumentKind}
+
+	const completionsWidth = 20
+	rendered := m.renderCompletionRow(row, 5, completionsWidth, false, false)
+
+	// ANSI-stripped width must not exceed completionsWidth + 2 (one cell of
+	// side padding on each end via JoinHorizontal). Without the truncation
+	// fix, the full 60-cell name plus padding would render at ~62 cells.
+	const sidePadding = 2
+	if lipgloss.Width(rendered) > completionsWidth+sidePadding {
+		t.Errorf("rendered width = %d, want ≤ %d (long name should be truncated to fit box)",
+			lipgloss.Width(rendered), completionsWidth+sidePadding)
+	}
+	if !strings.Contains(rendered, "…") {
+		t.Errorf("expected ellipsis marker in truncated name, got: %q", rendered)
+	}
+}
+
+func TestRenderCompletionRow_LongNameTruncates_PreservesMatchHighlight(t *testing.T) {
+	// The truncation step runs AFTER match-highlight ANSI has been embedded
+	// into the name string. ansi.Truncate must therefore correctly handle
+	// the ANSI sequences — not split them mid-CSI and not over-count their
+	// width. This test plants a match-highlight on the first few cells of
+	// a long name and confirms:
+	//   1. lipgloss.Width still measures within the box budget
+	//      (ANSI bytes must not inflate the displayed width)
+	//   2. the leading match-highlight bytes survive truncation
+	//      (the highlighted prefix is what the user uses to orient,
+	//      losing it would be a regression in user experience)
+	m, err := New(TestCommands, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Match the first three cells so the row carries match-highlight ANSI
+	// around "aaa" before truncation runs.
+	m.matchPrefix = "aaa"
+
+	longName := strings.Repeat("a", 60)
+	row := completionRow{Name: longName, Description: "ignored", Kind: argumentKind}
+
+	const completionsWidth = 20
+	rendered := m.renderCompletionRow(row, 5, completionsWidth, false, false)
+
+	const sidePadding = 2
+	if lipgloss.Width(rendered) > completionsWidth+sidePadding {
+		t.Errorf("rendered width with match-highlight = %d, want ≤ %d (ANSI bytes must not inflate width)",
+			lipgloss.Width(rendered), completionsWidth+sidePadding)
+	}
+	if !strings.Contains(rendered, "…") {
+		t.Errorf("expected ellipsis in truncated highlighted name, got: %q", rendered)
+	}
+	// The match-highlight style sets a foreground colour. After truncation
+	// the leading SGR sequence must still be present — verifiable by
+	// checking that the rendered string differs from an un-highlighted
+	// render of the same row (proves the ANSI survived the cut).
+	m.matchPrefix = ""
+	unhighlighted := m.renderCompletionRow(row, 5, completionsWidth, false, false)
+	if rendered == unhighlighted {
+		t.Errorf("truncation stripped the match-highlight ANSI:\n  with    %q\n  without %q",
+			rendered, unhighlighted)
+	}
+}
+
 func TestRenderCompletionRow_NarrowTerminalDoesNotPanic(t *testing.T) {
 	// completionsWidth < nameWidth would have passed negative values to
 	// lipgloss.Width / PaddingLeft before the clamp.
@@ -497,13 +571,21 @@ func TestFindMatchRange(t *testing.T) {
 		{"no match", "commit", "xx", -1, -1},
 		{"empty prefix", "commit", "", -1, -1},
 		{"case insensitive", "-FileDirArg", "-file", 0, 5},
+		// Wide-rune cases. lipgloss measures a CJK char as 2 cells, so the
+		// returned cell range must reflect that — a rune-based
+		// implementation would report (0, 1) and only highlight half the
+		// glyph.
+		{"wide-rune prefix matches in cells", "日本.txt", "日", 0, 2},
+		{"wide-rune prefix spans two chars", "日本.txt", "日本", 0, 4},
+		// Wide-rune word offset: when the matched word comes after a
+		// space-separated wide-rune word, the returned start must reflect
+		// cells (not runes) past the leading wide-rune word.
+		{"ASCII match after wide-rune word", "日 file.txt", "fi", 3, 5},
 	}
 
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			lower := strings.ToLower(c.prefix)
-			runeLen := len([]rune(c.prefix))
-			start, end := findMatchRange(c.displayName, lower, runeLen)
+			start, end := findMatchRange(c.displayName, c.prefix)
 			if start != c.expectedStart || end != c.expectedEnd {
 				t.Errorf("findMatchRange(%q, %q) = (%d, %d), want (%d, %d)",
 					c.displayName, c.prefix, start, end, c.expectedStart, c.expectedEnd)

@@ -2,7 +2,6 @@ package bubblecomplete
 
 import (
 	"strings"
-	"unicode/utf8"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"
@@ -237,15 +236,23 @@ func (m Model) showCompletionsRender() string {
 
 func (m Model) renderCompletionRow(row completionRow, titleWidth, completionsWidth int, selected, alt bool) string {
 	name := row.Name
-	lowerPrefix := strings.ToLower(m.matchPrefix)
-	prefixRuneLen := utf8.RuneCountInString(m.matchPrefix)
-	if start, end := findMatchRange(name, lowerPrefix, prefixRuneLen); start >= 0 {
+	if start, end := findMatchRange(name, m.matchPrefix); start >= 0 {
 		name = lipgloss.StyleRanges(name, lipgloss.NewRange(start, end, m.styles.Completion.Match))
 	}
 	if m.ShowIcons {
 		if icon := m.iconFor(row.Kind); icon != "" {
 			name = m.styles.Completion.Icon.Render(icon) + " " + name
 		}
+	}
+
+	// Cap the rendered name at the box width minus the row's side padding
+	// (one space each side in the JoinHorizontal below). Without this, a
+	// long path completion like "/Users/jane/very/long/.../file.md" would
+	// overflow the box on a narrow terminal. ansi.Truncate is style-aware
+	// — it preserves any match-highlight or icon ANSI prefix.
+	maxNameWidth := max(0, completionsWidth-2)
+	if lipgloss.Width(name) > maxNameWidth {
+		name = ansi.Truncate(name, maxNameWidth, "…")
 	}
 
 	nameWidth := lipgloss.Width(name)
@@ -361,21 +368,39 @@ func (m Model) getCompletionsWidth(maxLineLength int) int {
 	return maxLineLength
 }
 
-// findMatchRange finds the rune-based start and end positions where lowerPrefix
-// matches the beginning of any space-separated word in name.
-// This handles flag display names like "-m --message" where the prefix "--me"
-// should match the "--message" portion starting at rune position 3.
+// findMatchRange finds the CELL-based start and end positions within name
+// where matchPrefix (case-insensitively) matches the start of any
+// space-separated word. Cell-based so the returned range plugs directly
+// into [lipgloss.NewRange], which is column/cell-indexed — not rune-indexed.
+//
+// This handles flag display names like "-m --message" where the prefix
+// "--me" should highlight the "--me" portion of "--message". It also
+// handles wide-rune names ("日本.txt" with prefix "日") correctly: lipgloss
+// measures "日" as 2 cells, so the highlight covers both columns rather
+// than just one — the bug a naive rune-position implementation would hit.
+//
+// Best-effort caveat: the returned range uses lipgloss.Width(matchPrefix)
+// for the highlight length, which assumes case folding preserves cell
+// width. That's true for ASCII and for typical Latin/CJK casing, but a
+// few obscure Unicode codepoints (e.g. the Turkish dotless-İ pair, some
+// digraphs) fold to substrings whose cell width differs from the source.
+// In those rare cases the highlight may be off by one cell at the
+// trailing edge. Acceptable for the completion-row use case; revisit if
+// it surfaces in real filenames.
+//
 // Returns (-1, -1) if no match is found.
-func findMatchRange(name, lowerPrefix string, prefixRuneLen int) (int, int) {
-	if lowerPrefix == "" {
+func findMatchRange(name, matchPrefix string) (int, int) {
+	if matchPrefix == "" {
 		return -1, -1
 	}
-	runePos := 0
+	lowerPrefix := strings.ToLower(matchPrefix)
+	prefixCells := lipgloss.Width(matchPrefix)
+	cellPos := 0
 	for word := range strings.SplitSeq(name, " ") {
 		if strings.HasPrefix(strings.ToLower(word), lowerPrefix) {
-			return runePos, runePos + prefixRuneLen
+			return cellPos, cellPos + prefixCells
 		}
-		runePos += utf8.RuneCountInString(word) + 1 // +1 for the space
+		cellPos += lipgloss.Width(word) + 1 // +1 for the space
 	}
 	return -1, -1
 }
