@@ -62,7 +62,6 @@ func uniqueCompletions(completions *[]completion) {
 // getCompletions gets completions for the input based on the available commands
 func getCompletions(input string, commands []*Command) ([]completion, string) {
 	var completions []completion
-	var globalFlags []*Flag
 
 	// If the input is empty, return nothing
 	if strings.TrimSpace(input) == "" {
@@ -87,29 +86,7 @@ func getCompletions(input string, commands []*Command) ([]completion, string) {
 	}
 
 	// Otherwise we have at least one command entered so find the final valid command entered
-	var finalCommand *Command
-	commandDepth := 0
-	for _, enteredInput := range parts {
-		for _, c := range commands {
-			// If the command is found in the available commands and we've finished typing then use it
-			if c.Command == enteredInput && inputContainsCompletedToken(input, c.Command) {
-				finalCommand = c
-				commands = c.SubCommands
-				commandDepth++
-				// Carry all persistent flags forward as effective flags on
-				// subcommands. Downstream completion paths dedupe via
-				// containsFlag, so we must not pre-filter here — value-
-				// detection needs the persistent flag in scope even when
-				// the user is actively entering it.
-				for _, flag := range c.Flags {
-					if flag.Persistent {
-						globalFlags = append(globalFlags, flag)
-					}
-				}
-				break
-			}
-		}
-	}
+	finalCommand, commandDepth, globalFlags := walkToFinalCommand(input, parts, commands)
 
 	// If we haven't found any command, it must be invalid input so return nothing
 	if finalCommand == nil {
@@ -521,6 +498,34 @@ func findMatchingFlag(arg string, effectiveFlags []*Flag) *Flag {
 func isCombinedShortFlag(arg string) bool {
 	body, ok := shortFlagBody(arg)
 	return ok && len(body) > 1
+}
+
+// walkToFinalCommand walks the parsed input parts down the command tree and
+// returns the deepest matched command, how many parts were consumed by command
+// words, and the persistent flags accumulated from ancestor commands. Returns
+// finalCmd == nil when no command word matched.
+//
+// Persistent flags propagate to every subcommand. Downstream completion paths
+// dedupe via [containsFlag], so we must not pre-filter here — value-detection
+// needs the persistent flag in scope even when the user is actively entering
+// it.
+func walkToFinalCommand(input string, parts []string, commands []*Command) (finalCmd *Command, commandDepth int, globalFlags []*Flag) {
+	for _, enteredInput := range parts {
+		for _, c := range commands {
+			if c.Command == enteredInput && inputContainsCompletedToken(input, c.Command) {
+				finalCmd = c
+				commands = c.SubCommands
+				commandDepth++
+				for _, flag := range c.Flags {
+					if flag.Persistent {
+						globalFlags = append(globalFlags, flag)
+					}
+				}
+				break
+			}
+		}
+	}
+	return finalCmd, commandDepth, globalFlags
 }
 
 // inputContainsCompletedToken returns true if input contains an unquoted token
