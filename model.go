@@ -360,9 +360,14 @@ func (m *Model) SetStyles(s Styles) {
 // applyInputValidationStyle pushes the current valid/invalid input style into
 // the embedded textinput so Render stays free of side effects. Call after any
 // change to validationErr or styles.
+//
+// When the user is mid-typing a partial filesystem path that resolves to
+// PathNotFound, the whole-input invalid style is suppressed — the path-range
+// overlay (PathPartial) provides the in-progress signal instead. Other
+// validation errors still drive whole-input red.
 func (m *Model) applyInputValidationStyle() {
 	style := m.styles.Input.Valid
-	if m.validationErr != nil {
+	if m.validationErr != nil && !m.isPartialPathMidType() {
 		style = m.styles.Input.Invalid
 	}
 	s := m.input.Styles()

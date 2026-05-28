@@ -261,6 +261,203 @@ func TestTabAccept_TildeExpansion(t *testing.T) {
 	}
 }
 
+// renderWithFeature is a small helper that builds a model with the feature
+// toggled to `on`, types `input`, and returns the rendered output.
+func renderWithFeature(t *testing.T, on bool, input string) string {
+	t.Helper()
+	m := newPathTestModel(t, on)
+	m = simulateTyping(t, m, input)
+	return m.Render()
+}
+
+// TestRender_OverlayChangesOutputByValidity asserts that the rendered output
+// differs between valid/partial/invalid validity classes when the feature
+// is enabled — i.e. the overlay is applied and the chosen style differs by
+// classification. The exact ANSI bytes are not asserted (lipgloss merges
+// styles when overlaying via StyleRanges, so the precise output isn't
+// trivially reconstructable). Asserting pairwise inequality is the
+// strongest observation we can make without coupling to internal ANSI
+// codes.
+func TestRender_OverlayChangesOutputByValidity(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
+
+	valid := renderWithFeature(t, true, "cat "+filepath.Join(dir, "foo.txt"))
+	partial := renderWithFeature(t, true, "cat "+filepath.Join(dir, "fo"))
+	invalid := renderWithFeature(t, true, "cat "+filepath.Join(dir, "zzz_nope"))
+
+	if valid == partial {
+		t.Errorf("valid and partial renders should differ (overlay style not changing)")
+	}
+	if valid == invalid {
+		t.Errorf("valid and invalid renders should differ")
+	}
+	if partial == invalid {
+		t.Errorf("partial and invalid renders should differ")
+	}
+}
+
+// TestRender_OverlayPresentWhenFeatureEnabled asserts that enabling the
+// feature produces a different rendered output than leaving it disabled,
+// holding all other state equal. The byte-level difference proves that
+// styleInputPathRange wrote something to the output.
+func TestRender_OverlayPresentWhenFeatureEnabled(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
+	full := filepath.Join(dir, "foo.txt")
+
+	on := renderWithFeature(t, true, "cat "+full)
+	off := renderWithFeature(t, false, "cat "+full)
+	if on == off {
+		t.Errorf("feature-on render should differ from feature-off render")
+	}
+}
+
+// TestRender_OverlaySkippedWhenOverflow asserts that an input wider than
+// m.width bypasses the overlay rather than painting garbage. The test
+// compares renderedInput against the raw textinput.View directly — the
+// only thing renderedInput should add when active is the StyleRanges
+// overlay, so when the overflow guard fires, those outputs must match.
+func TestRender_OverlaySkippedWhenOverflow(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
+	input := "cat " + filepath.Join(dir, "foo.txt")
+
+	m, err := New(pathTestCommands(), 8, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, input)
+	if !m.pathState.active {
+		t.Fatal("setup: expected pathState.active=true")
+	}
+	if m.renderedInput() != m.input.View() {
+		t.Errorf("overflow case should bypass overlay:\n  got %q\n want %q",
+			m.renderedInput(), m.input.View())
+	}
+}
+
+// TestRender_EqualsFormOverlayDiffers ensures the equals-form rendering
+// changes when the feature is enabled — the value portion gets the
+// overlay even though tokenPrefix ("--path=") is in the same token.
+func TestRender_EqualsFormOverlayDiffers(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "report.txt"))
+	input := "find . --path=" + filepath.Join(dir, "report.txt")
+	if renderWithFeature(t, true, input) == renderWithFeature(t, false, input) {
+		t.Errorf("equals-form render should differ between feature on/off")
+	}
+}
+
+// TestSuppression_DoesNotHideErrorFromOtherArg verifies that when one
+// path argument is invalid (PathNotFound from a committed token) and a
+// LATER positional is a partial path, the whole-input red is NOT
+// suppressed — the validation error belongs to a different token.
+func TestSuppression_DoesNotHideErrorFromOtherArg(t *testing.T) {
+	cmd := &Command{
+		Command: "twopath",
+		PositionalArguments: []*PositionalArgument{
+			{Name: "first", Type: FileArgument, Required: true},
+			{Name: "second", Type: DirArgument, Required: true},
+		},
+	}
+	dir := t.TempDir()
+	mustMkdir(t, filepath.Join(dir, "subdir"))
+
+	m, err := New([]*Command{cmd}, 200, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// First path: definitely-missing. Second path: prefix of "subdir/".
+	input := "twopath " + filepath.Join(dir, "missing") + " " + filepath.Join(dir, "sub")
+	m = simulateTyping(t, m, input)
+
+	if m.validationErr == nil {
+		t.Fatal("setup: expected validationErr from first path")
+	}
+	if !m.pathState.active || m.pathState.validity != pathPartial {
+		t.Fatalf("setup: expected active+partial for second path; got active=%v validity=%d",
+			m.pathState.active, m.pathState.validity)
+	}
+	if m.isPartialPathMidType() {
+		t.Errorf("suppression must NOT fire: validation error belongs to a different argument")
+	}
+}
+
+// TestSuppression_FiresWhenErrorMatchesActiveArg confirms the positive case
+// — single path argument, partial typing, error matches → suppression fires.
+func TestSuppression_FiresWhenErrorMatchesActiveArg(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
+	m := newPathTestModel(t, true)
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "fo"))
+
+	if !m.isPartialPathMidType() {
+		t.Errorf("expected suppression to fire for single-arg partial path")
+	}
+}
+
+// TestRender_OverlayBypassedDuringCompletionCycling locks in that the
+// overlay is skipped while the user is cycling Tab completions. Without
+// the bypass, the frozen pathState offsets would mis-style the cycled
+// preview value.
+func TestRender_OverlayBypassedDuringCompletionCycling(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
+
+	// Width must comfortably exceed the temp-dir path or the overflow
+	// guard, not the cycling bypass, would be what produces the
+	// no-overlay state — defeating the test.
+	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "fo"))
+
+	beforeTab := m.renderedInput()
+	rawBeforeTab := m.input.View()
+	if beforeTab == rawBeforeTab {
+		t.Fatal("setup: expected overlay to be applied before Tab (width may be too small)")
+	}
+
+	// Tab to begin cycling — input.Value updates to the candidate, but
+	// pathState stays frozen. renderedInput should bypass the overlay.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if m.completionHolder == "" {
+		t.Fatal("setup: expected Tab to enter cycling state")
+	}
+	if m.renderedInput() != m.input.View() {
+		t.Errorf("overlay should be bypassed during cycling:\n  got %q\n want %q",
+			m.renderedInput(), m.input.View())
+	}
+}
+
+func TestRender_WholeInputNotInvalidForPartialPathNotFound(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
+	m := newPathTestModel(t, true)
+	partial := filepath.Join(dir, "fo")
+	m = simulateTyping(t, m, "cat "+partial)
+
+	// Setup invariant: partial path resolves to PathNotFound at submit time,
+	// but classifier reports pathPartial — suppression should fire.
+	if m.pathState.validity != pathPartial {
+		t.Fatalf("setup: expected pathPartial, got %d", m.pathState.validity)
+	}
+	if !m.isPartialPathMidType() {
+		t.Fatalf("setup: expected isPartialPathMidType=true (validationErr=%v)", m.validationErr)
+	}
+
+	// The textinput's Focused.Text style should be the Valid style, not
+	// Invalid, because the suppression rule fired.
+	got := m.input.Styles().Focused.Text.Render("sample")
+	want := m.Styles().Input.Valid.Render("sample")
+	if got != want {
+		t.Errorf("expected suppression to keep Valid style; got %q want %q", got, want)
+	}
+}
+
 // pathCandidateNames is a small helper for set-style assertions.
 type pathCandidateNames []pathCompletion
 

@@ -23,11 +23,57 @@ func (m Model) View() tea.View {
 func (m Model) Render() string {
 	var output string
 	if m.historyIndex != -1 {
-		output = m.input.View()
+		output = m.renderedInput()
 	} else {
 		output = m.showCompletionsRender()
 	}
 	return lg.Width(m.width).Render(output)
+}
+
+// renderedInput returns m.input.View() with the path-validity overlay
+// applied when m.pathState is active. The overlay is skipped when:
+//   - the user is cycling completions (pathState is frozen and its byte
+//     offsets refer to the pre-cycling input; styling against the cycled
+//     preview value would mis-style or panic)
+//   - the rendered input width exceeds m.width (textinput's internal
+//     scroll window obscures cell offsets and we'd paint garbage)
+//   - the stored offsets are out of range for the current value
+//     (defensive — shouldn't fire under correct lifecycle but cheap to
+//     check)
+func (m Model) renderedInput() string {
+	base := m.input.View()
+	if !m.pathState.active || m.completionHolder != "" {
+		return base
+	}
+	if m.pathState.valueStart >= m.pathState.valueEnd {
+		return base
+	}
+	value := m.input.Value()
+	if m.pathState.valueEnd > len(value) {
+		return base
+	}
+	promptCells := lipgloss.Width(m.input.Prompt)
+	if promptCells+lipgloss.Width(value) > m.width {
+		return base
+	}
+	beforeCells := lipgloss.Width(value[:m.pathState.valueStart])
+	tokenCells := lipgloss.Width(value[m.pathState.valueStart:m.pathState.valueEnd])
+	if tokenCells == 0 {
+		return base
+	}
+
+	var style lipgloss.Style
+	switch m.pathState.validity {
+	case pathValid:
+		style = m.styles.Input.PathValid
+	case pathPartial:
+		style = m.styles.Input.PathPartial
+	default:
+		style = m.styles.Input.PathInvalid
+	}
+	rangeStart := promptCells + beforeCells
+	rangeEnd := rangeStart + tokenCells
+	return lipgloss.StyleRanges(base, lipgloss.NewRange(rangeStart, rangeEnd, style))
 }
 
 // MARK: completion Row Model
@@ -54,6 +100,11 @@ func kindOf(c completion) completionKind {
 		return argumentKind
 	case *Flag, Flag:
 		return flagKind
+	case pathCompletion, *pathCompletion:
+		// Path candidates are filesystem entries surfaced for an argument
+		// value — map to argumentKind so ShowIcons uses ArgumentIcon, not
+		// the fallback CommandIcon.
+		return argumentKind
 	}
 	return commandKind
 }
@@ -146,7 +197,7 @@ func visibleWindow(selected, total, rows int) (start, end int) {
 
 func (m Model) showCompletionsRender() string {
 	if len(m.completions) == 0 || (len(m.input.Value()) == 0 && !m.showAll) {
-		return m.input.View()
+		return m.renderedInput()
 	}
 
 	rows := m.completionRows()
@@ -176,9 +227,9 @@ func (m Model) showCompletionsRender() string {
 	renderedBox := style.Margin(0, 0, 0, offset).Render(box)
 
 	if m.CompletionsPosition == PositionAbove {
-		return renderedBox + "\n" + m.input.View()
+		return renderedBox + "\n" + m.renderedInput()
 	}
-	return m.input.View() + "\n" + renderedBox
+	return m.renderedInput() + "\n" + renderedBox
 }
 
 func (m Model) renderCompletionRow(row completionRow, titleWidth, completionsWidth int, selected, alt bool) string {

@@ -17,14 +17,30 @@ var (
 	borderColor          = compat.AdaptiveColor{Light: lipgloss.Color("#CCD0DA"), Dark: lipgloss.Color("#313244")}
 	scrollIndicatorColor = compat.AdaptiveColor{Light: lipgloss.Color("#9CA0B0"), Dark: lipgloss.Color("#45475A")}
 	validColor           = compat.AdaptiveColor{Light: lipgloss.Color("#40A02B"), Dark: lipgloss.Color("#A6E3A1")}
+	invalidPathColor     = compat.AdaptiveColor{Light: lipgloss.Color("#D20F39"), Dark: lipgloss.Color("#F38BA8")}
 )
 
 var lg = lipgloss.NewStyle()
 
 // InputStyles styles the text inside the input field based on validation state.
+//
+// Valid and Invalid apply to the whole input value. PathValid, PathPartial,
+// and PathInvalid apply as a range overlay on the typed value of a
+// FileArgument / DirArgument / FileDirArgument when WithFilesystemCompletions
+// is enabled. Zero-value styles produce no overlay; hosts wanting defaults
+// should start from DefaultStyles and modify.
 type InputStyles struct {
 	Valid   lipgloss.Style
 	Invalid lipgloss.Style
+	// PathValid styles the typed value when it resolves to an entry of the
+	// expected kind.
+	PathValid lipgloss.Style
+	// PathPartial styles the typed value when it is a strict prefix of one
+	// or more existing entries (mid-navigation).
+	PathPartial lipgloss.Style
+	// PathInvalid styles the typed value when it cannot resolve or has the
+	// wrong kind.
+	PathInvalid lipgloss.Style
 }
 
 // CompletionStyles styles the completion list rows, border, match highlight, descriptions and icons.
@@ -55,8 +71,11 @@ type Styles struct {
 func DefaultStyles() Styles {
 	return Styles{
 		Input: InputStyles{
-			Valid:   lg.Foreground(validColor),
-			Invalid: lg.Foreground(mutedTextColor),
+			Valid:       lg.Foreground(validColor),
+			Invalid:     lg.Foreground(mutedTextColor),
+			PathValid:   lg.Foreground(validColor),
+			PathPartial: lg.Underline(true),
+			PathInvalid: lg.Foreground(invalidPathColor),
 		},
 		Completion: CompletionStyles{
 			Match:       lg.Bold(true).Foreground(accentColor),

@@ -74,7 +74,7 @@ func TestActiveFileArgument_Inactive(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			_, _, _, _, _, ok := activeFileArgument(c.input, c.cmds)
+			_, _, _, _, _, _, ok := activeFileArgument(c.input, c.cmds)
 			if ok {
 				t.Errorf("activeFileArgument(%q) ok=true, want false", c.input)
 			}
@@ -84,7 +84,7 @@ func TestActiveFileArgument_Inactive(t *testing.T) {
 
 func TestActiveFileArgument_Positional(t *testing.T) {
 	const input = "cat ~/Doc"
-	kind, vs, ve, tp, oq, ok := activeFileArgument(input, cmds(fileArgCmd))
+	kind, _, vs, ve, tp, oq, ok := activeFileArgument(input, cmds(fileArgCmd))
 	if !ok {
 		t.Fatal("expected active=true")
 	}
@@ -117,7 +117,7 @@ func TestActiveFileArgument_PositionalQuoted(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			kind, vs, ve, tp, oq, ok := activeFileArgument(c.input, cmds(fileArgCmd))
+			kind, _, vs, ve, tp, oq, ok := activeFileArgument(c.input, cmds(fileArgCmd))
 			if !ok {
 				t.Fatal("expected active=true")
 			}
@@ -139,7 +139,7 @@ func TestActiveFileArgument_PositionalQuoted(t *testing.T) {
 
 func TestActiveFileArgument_FlagSpaceSeparated(t *testing.T) {
 	const input = "find . --path ~/Doc"
-	kind, vs, ve, tp, oq, ok := activeFileArgument(input, cmds(findCmd))
+	kind, _, vs, ve, tp, oq, ok := activeFileArgument(input, cmds(findCmd))
 	if !ok {
 		t.Fatal("expected active=true")
 	}
@@ -168,7 +168,7 @@ func TestActiveFileArgument_FlagEqualsForm(t *testing.T) {
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
-			kind, vs, ve, tp, oq, ok := activeFileArgument(c.input, cmds(findCmd))
+			kind, _, vs, ve, tp, oq, ok := activeFileArgument(c.input, cmds(findCmd))
 			if !ok {
 				t.Fatal("expected active=true")
 			}
@@ -189,10 +189,10 @@ func TestActiveFileArgument_FlagEqualsForm(t *testing.T) {
 }
 
 func TestActiveFileArgument_DirAndFileDir(t *testing.T) {
-	if kind, _, _, _, _, ok := activeFileArgument("cd /etc", cmds(dirArgCmd)); !ok || kind != DirArgument {
+	if kind, _, _, _, _, _, ok := activeFileArgument("cd /etc", cmds(dirArgCmd)); !ok || kind != DirArgument {
 		t.Errorf("DirArgument: ok=%v kind=%v", ok, kind)
 	}
-	if kind, _, _, _, _, ok := activeFileArgument("open /etc", cmds(fileDirArgCmd)); !ok || kind != FileDirArgument {
+	if kind, _, _, _, _, _, ok := activeFileArgument("open /etc", cmds(fileDirArgCmd)); !ok || kind != FileDirArgument {
 		t.Errorf("FileDirArgument: ok=%v kind=%v", ok, kind)
 	}
 }

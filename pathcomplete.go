@@ -1,6 +1,7 @@
 package bubblecomplete
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -27,7 +28,9 @@ const (
 // pathState is the per-keystroke result of [activeFileArgument] plus
 // classification and candidate generation. Stored on [Model], read by
 // [Model.Render] and the validation-style suppression. Frozen during
-// completion cycling, same as validationErr.
+// completion cycling, same as validationErr — [Model.renderedInput]
+// bypasses the overlay during cycling so the stale offsets don't mis-style
+// the previewed candidate.
 type pathState struct {
 	// active is true when the user is currently editing a value for a
 	// file/dir-typed argument and the feature is enabled.
@@ -35,6 +38,11 @@ type pathState struct {
 	// kind is the argument's [ArgumentType] (one of FileArgument,
 	// DirArgument, FileDirArgument) when active.
 	kind ArgumentType
+	// argName is the active argument's display name as produced by
+	// argument.getName() — used to verify that a PathNotFound validation
+	// error actually belongs to the active token before suppressing
+	// whole-input red.
+	argName string
 	// valueStart and valueEnd are byte offsets in m.input.Value() of the
 	// unquoted value range — used by the render overlay.
 	valueStart int
@@ -99,11 +107,15 @@ func statBudget(limit int) int {
 //     value for a non-file argument type
 //   - the active value is empty (e.g. "--path=" with nothing after)
 //
-// valueStart and valueEnd are byte offsets in input that bound the *unquoted*
-// value text. tokenPrefix is whatever leads the active token before the
-// value (flag prefix and/or opening quote). openingQuote is 0 if no quote.
+// argName is the active argument's display name (argument.getName()) — used
+// to verify that a PathNotFound validation error belongs to the active
+// token before suppressing whole-input red. valueStart and valueEnd are
+// byte offsets in input that bound the *unquoted* value text. tokenPrefix
+// is whatever leads the active token before the value (flag prefix and/or
+// opening quote). openingQuote is 0 if no quote.
 func activeFileArgument(input string, commands []*Command) (
 	kind ArgumentType,
+	argName string,
 	valueStart, valueEnd int,
 	tokenPrefix string,
 	openingQuote rune,
@@ -148,6 +160,7 @@ func activeFileArgument(input string, commands []*Command) (
 				return
 			}
 			kind = f.Type
+			argName = f.getName()
 			eqIdx := strings.IndexByte(tokenRaw, '=')
 			valueStart = activeToken.Start + eqIdx + 1
 			valueEnd = activeToken.End
@@ -166,9 +179,9 @@ func activeFileArgument(input string, commands []*Command) (
 			}
 			ok = valueStart < valueEnd
 			if !ok {
-				return ArgumentType(""), 0, 0, "", 0, false
+				return ArgumentType(""), "", 0, 0, "", 0, false
 			}
-			return kind, valueStart, valueEnd, tokenPrefix, openingQuote, true
+			return kind, argName, valueStart, valueEnd, tokenPrefix, openingQuote, true
 		}
 		// Flag prefix didn't match any known flag — not active.
 		return
@@ -180,7 +193,7 @@ func activeFileArgument(input string, commands []*Command) (
 		if !isFileLikeArg(flag.Type) {
 			return
 		}
-		return finalizeTokenRange(activeToken, flag.Type)
+		return finalizeTokenRange(activeToken, flag.Type, flag.getName())
 	}
 
 	// Case 3: positional argument value. Two guards:
@@ -196,7 +209,7 @@ func activeFileArgument(input string, commands []*Command) (
 			if !isFileLikeArg(pos.Type) {
 				return
 			}
-			return finalizeTokenRange(activeToken, pos.Type)
+			return finalizeTokenRange(activeToken, pos.Type, pos.getName())
 		}
 	}
 
@@ -207,8 +220,8 @@ func activeFileArgument(input string, commands []*Command) (
 // for a positional or space-separated-flag value (Case 2/3 above). The
 // active token's bounds come from [tokenize]; quote handling reflects
 // whether the token opened with a quote and whether that quote was closed.
-func finalizeTokenRange(tok token, kind ArgumentType) (
-	ArgumentType, int, int, string, rune, bool,
+func finalizeTokenRange(tok token, kind ArgumentType, name string) (
+	ArgumentType, string, int, int, string, rune, bool,
 ) {
 	valueStart := tok.Start
 	valueEnd := tok.End
@@ -223,9 +236,9 @@ func finalizeTokenRange(tok token, kind ArgumentType) (
 		}
 	}
 	if valueStart >= valueEnd {
-		return ArgumentType(""), 0, 0, "", 0, false
+		return ArgumentType(""), "", 0, 0, "", 0, false
 	}
-	return kind, valueStart, valueEnd, tokenPrefix, openingQuote, true
+	return kind, name, valueStart, valueEnd, tokenPrefix, openingQuote, true
 }
 
 // isFileLikeArg reports whether t is one of the filesystem-backed argument
@@ -478,6 +491,31 @@ func buildCompletion(name string, isDir bool, tokenPrefix, userPrefix string, op
 	}
 }
 
+// isPartialPathMidType reports whether the whole-input invalid style should
+// be suppressed in favour of the path-range overlay. True only when:
+//   - the active path is a strict prefix (pathPartial), AND
+//   - the validation error is a PathNotFound, AND
+//   - the error's Argument matches the active argument's name.
+//
+// The argument-name check matters for commands with multiple path
+// positionals: typing `cp /missing/foo /tmp/par` would otherwise suppress
+// the whole-input red even though the validation error comes from the
+// FIRST (committed) path, not the partial second one. Suppression should
+// only fire when the partial path IS the cause of the error.
+func (m Model) isPartialPathMidType() bool {
+	if !m.pathState.active || m.pathState.validity != pathPartial {
+		return false
+	}
+	var ve *ValidationError
+	if !errors.As(m.validationErr, &ve) {
+		return false
+	}
+	if ve.Kind != PathNotFound {
+		return false
+	}
+	return ve.Argument == m.pathState.argName
+}
+
 // recomputePathState refreshes m.pathState from the current input value.
 // Called from Update's input-changed branch before getCompletions and
 // validateInput, so getCompletions can wholesale-replace its result list
@@ -493,7 +531,7 @@ func (m *Model) recomputePathState() {
 		return
 	}
 
-	kind, valueStart, valueEnd, tokenPrefix, openingQuote, ok := activeFileArgument(m.input.Value(), m.Commands)
+	kind, argName, valueStart, valueEnd, tokenPrefix, openingQuote, ok := activeFileArgument(m.input.Value(), m.Commands)
 	if !ok {
 		return
 	}
@@ -515,6 +553,7 @@ func (m *Model) recomputePathState() {
 	m.pathState = pathState{
 		active:     true,
 		kind:       kind,
+		argName:    argName,
 		valueStart: valueStart,
 		valueEnd:   valueEnd,
 		base:       base,
