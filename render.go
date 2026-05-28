@@ -312,7 +312,7 @@ func findMatchRange(name, lowerPrefix string, prefixRuneLen int) (int, int) {
 		return -1, -1
 	}
 	runePos := 0
-	for _, word := range strings.Split(name, " ") {
+	for word := range strings.SplitSeq(name, " ") {
 		if strings.HasPrefix(strings.ToLower(word), lowerPrefix) {
 			return runePos, runePos + prefixRuneLen
 		}
@@ -342,10 +342,7 @@ func renderScrollbar(height, totalItems, offset int, s ScrollbarStyles) []string
 	if height <= 0 || totalItems <= 0 {
 		return nil
 	}
-	thumbSize := max(1, height*height/totalItems)
-	if thumbSize > height {
-		thumbSize = height
-	}
+	thumbSize := min(height, max(1, height*height/totalItems))
 	scrollRange := totalItems - height
 	trackRange := height - thumbSize
 	thumbStart := 0

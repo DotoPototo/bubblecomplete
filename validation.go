@@ -69,7 +69,7 @@ func validateCommandInput(input string, commands []*Command) error {
 			// body like "-1=foo" should fall through so validateShortFlags'
 			// ASCII-letter guard reports it as MalformedFlag instead of an
 			// unhelpful "flag '-1' not found".
-			if eq := strings.Index(part, "="); eq != -1 && plausibleFlagName(part[:eq]) {
+			if before, _, found := strings.Cut(part, "="); found && plausibleFlagName(before) {
 				if err := validateFlag(part, parts, &i, parentCmd, globalFlags); err != nil {
 					return err
 				}

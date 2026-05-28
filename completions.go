@@ -590,7 +590,7 @@ func containsLongFlag(command string, flag string) bool {
 		if text == flag {
 			return true
 		}
-		if i := strings.Index(text, "="); i != -1 && text[:i] == flag {
+		if before, _, found := strings.Cut(text, "="); found && before == flag {
 			return true
 		}
 	}
