@@ -85,6 +85,33 @@ type Model struct {
 	// The icon for flag completions
 	FlagIcon string
 
+	// ---- Filesystem completion (opt-in) ----
+	//
+	// The fields below are public for parity with other Model knobs, but
+	// changes made after construction are picked up on the NEXT input
+	// change — pathState and m.completions are not refreshed in place.
+	// Hosts that need an immediate refresh after toggling at runtime can
+	// force one by re-typing or by clearing and re-setting input.
+
+	// FilesystemCompletions enables live filesystem completion and validity
+	// colouring for FileArgument, DirArgument, and FileDirArgument values.
+	// Default false. Hosts that don't enable this see the pre-feature
+	// behaviour unchanged.
+	FilesystemCompletions bool
+	// FilesystemCompletionLimit caps the per-keystroke candidate count.
+	// Default 200. Values ≤ 0 are clamped to 1 at the use site.
+	FilesystemCompletionLimit int
+	// HiddenFiles surfaces dotfiles in completions even when the typed
+	// basename prefix does not start with ".". Default false.
+	HiddenFiles bool
+
+	// pathCache is lazily initialised on first use by recomputePathState.
+	pathCache *dirCache
+	// pathState is the per-keystroke result of activeFileArgument plus
+	// classification and candidate generation. Read by Render and the
+	// validation-style suppression.
+	pathState pathState
+
 	styles Styles
 	keymap KeyMap
 }
@@ -288,26 +315,29 @@ func New(commands []*Command, width int, opts ...Option) (Model, error) {
 	input.KeyMap = inputKeyMap
 
 	m := Model{
-		input:               input,
-		Commands:            commands,
-		width:               width,
-		completionIndex:     -1,
-		historyIndex:        -1,
-		HistoryLimit:        100,
-		Autotrim:            true,
-		IndentCompletions:   true,
-		CompletionsOffset:   0,
-		ShowBorderScroll:    false,
-		ShowScrollbar:       false,
-		CompletionsPosition: PositionBelow,
-		CompletionRows:      5,
-		ShowIcons:           false,
-		ShowDescriptions:    true,
-		CommandIcon:         "\u203A",
-		ArgumentIcon:        "\u25C6",
-		FlagIcon:            "\u25C7",
-		styles:              DefaultStyles(),
-		keymap:              DefaultKeyMap(),
+		input:                     input,
+		Commands:                  commands,
+		width:                     width,
+		completionIndex:           -1,
+		historyIndex:              -1,
+		HistoryLimit:              100,
+		Autotrim:                  true,
+		IndentCompletions:         true,
+		CompletionsOffset:         0,
+		ShowBorderScroll:          false,
+		ShowScrollbar:             false,
+		CompletionsPosition:       PositionBelow,
+		CompletionRows:            5,
+		ShowIcons:                 false,
+		ShowDescriptions:          true,
+		CommandIcon:               "\u203A",
+		ArgumentIcon:              "\u25C6",
+		FlagIcon:                  "\u25C7",
+		FilesystemCompletions:     false,
+		FilesystemCompletionLimit: 200,
+		HiddenFiles:               false,
+		styles:                    DefaultStyles(),
+		keymap:                    DefaultKeyMap(),
 	}
 	for _, opt := range opts {
 		opt(&m)

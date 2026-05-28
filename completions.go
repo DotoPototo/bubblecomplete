@@ -10,6 +10,22 @@ func (m Model) getCompletions() ([]completion, string) {
 	if m.input.Value() == "" && !m.showAll {
 		return []completion{}, ""
 	}
+
+	// Modal path-completion context: when editing a file/dir argument value
+	// and we have candidates, those replace the entire completion list.
+	// Command and flag rows are intentionally hidden in this mode — the
+	// user is doing filesystem navigation, not flag exploration. To
+	// re-surface them, the user moves the cursor out of the value position.
+	if m.pathState.active && len(m.pathState.candidates) > 0 {
+		out := make([]completion, len(m.pathState.candidates))
+		for i := range m.pathState.candidates {
+			out[i] = m.pathState.candidates[i]
+		}
+		// generateCandidates already produces a deduped, dirs-first
+		// case-fold-alphabetic list; skip sort/unique.
+		return out, m.pathState.base
+	}
+
 	var allCompletions []completion
 	var matchPrefix string
 

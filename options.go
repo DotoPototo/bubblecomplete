@@ -96,3 +96,29 @@ func WithKeyMap(k KeyMap) Option {
 func WithStyles(s Styles) Option {
 	return func(m *Model) { m.SetStyles(s) }
 }
+
+// WithFilesystemCompletions enables live filesystem completion for values
+// bound to FileArgument, DirArgument, or FileDirArgument. Default false.
+//
+// When enabled, the completion list for an active file/dir value is replaced
+// wholesale with matching entries from the relevant parent directory. Tab
+// cycles through candidates the same way it does for command/flag rows.
+// See also [WithFilesystemCompletionLimit] and [WithHiddenFiles].
+func WithFilesystemCompletions(b bool) Option {
+	return func(m *Model) { m.FilesystemCompletions = b }
+}
+
+// WithFilesystemCompletionLimit caps the number of filesystem candidates
+// shown per keystroke. Default 200. Values ≤ 0 are clamped to 1 at the
+// use site (so direct mutation of the public field is safe).
+func WithFilesystemCompletionLimit(n int) Option {
+	return func(m *Model) { m.FilesystemCompletionLimit = n }
+}
+
+// WithHiddenFiles surfaces dotfiles in filesystem completion candidates
+// even when the typed basename prefix does not start with ".". Default
+// false (dotfiles only surface when the user explicitly types a leading
+// "."). Has no effect when WithFilesystemCompletions is false.
+func WithHiddenFiles(b bool) Option {
+	return func(m *Model) { m.HiddenFiles = b }
+}

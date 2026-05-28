@@ -24,6 +24,31 @@ const (
 	pathValid
 )
 
+// pathState is the per-keystroke result of [activeFileArgument] plus
+// classification and candidate generation. Stored on [Model], read by
+// [Model.Render] and the validation-style suppression. Frozen during
+// completion cycling, same as validationErr.
+type pathState struct {
+	// active is true when the user is currently editing a value for a
+	// file/dir-typed argument and the feature is enabled.
+	active bool
+	// kind is the argument's [ArgumentType] (one of FileArgument,
+	// DirArgument, FileDirArgument) when active.
+	kind ArgumentType
+	// valueStart and valueEnd are byte offsets in m.input.Value() of the
+	// unquoted value range — used by the render overlay.
+	valueStart int
+	valueEnd   int
+	// base is the basename prefix from [resolvePath], used as the
+	// matchPrefix when path candidates replace the completion list.
+	base string
+	// validity drives the per-token overlay style.
+	validity pathValidity
+	// candidates is the list rendered in place of the normal completion
+	// rows when active and non-empty.
+	candidates []pathCompletion
+}
+
 // pathCompletion is a [completion] backed by a filesystem entry under the
 // active file/dir argument value. It carries the full active-token
 // replacement in insertion so the existing keyTab pretext + getAutocomplete
@@ -48,9 +73,13 @@ func (p pathCompletion) getAutocomplete() string { return p.insertion }
 // 100k symlinks. A floor protects the small-limit case from being
 // pathologically restrictive.
 //
-// The budget never changes observable output relative to an unbounded
-// stat — sort+truncate would have dropped the same alphabetically-late
-// entries anyway. It exists strictly to cap CPU on pathological cases.
+// The budget primarily exists to cap CPU on pathological cases. For the
+// typical mix of regular files and dirs (with DirEntry.Type() already
+// populated) it has no effect on output. For symlink-heavy directories
+// where dirs-first sorting would have promoted a late symlink-to-dir, the
+// budget can cause that entry to be dropped entirely rather than sorted
+// to the front — an accepted candidate-quality tradeoff against bounded
+// worst-case latency.
 func statBudget(limit int) int {
 	const floor = 16
 	if limit < floor {
@@ -446,5 +475,50 @@ func buildCompletion(name string, isDir bool, tokenPrefix, userPrefix string, op
 		insertion:   insertion,
 		description: description,
 		isDir:       isDir,
+	}
+}
+
+// recomputePathState refreshes m.pathState from the current input value.
+// Called from Update's input-changed branch before getCompletions and
+// validateInput, so getCompletions can wholesale-replace its result list
+// with pathState.candidates when the active argument is file/dir-typed.
+//
+// When the feature is disabled or no file/dir value is active, pathState is
+// reset to its zero value. Cost in that case is one bool check plus the
+// activeFileArgument detector (tokenisation + command walk, which run for
+// existing completion logic anyway).
+func (m *Model) recomputePathState() {
+	m.pathState = pathState{}
+	if !m.FilesystemCompletions {
+		return
+	}
+
+	kind, valueStart, valueEnd, tokenPrefix, openingQuote, ok := activeFileArgument(m.input.Value(), m.Commands)
+	if !ok {
+		return
+	}
+
+	if m.pathCache == nil {
+		m.pathCache = newDirCache()
+	}
+
+	cwd, _ := os.Getwd()
+	home, _ := os.UserHomeDir()
+	typed := m.input.Value()[valueStart:valueEnd]
+	expandTilde := openingQuote != '\''
+	fullClean, parent, base, userPrefix := resolvePath(typed, cwd, home, expandTilde)
+
+	entries := m.pathCache.read(parent)
+
+	limit := max(m.FilesystemCompletionLimit, 1)
+
+	m.pathState = pathState{
+		active:     true,
+		kind:       kind,
+		valueStart: valueStart,
+		valueEnd:   valueEnd,
+		base:       base,
+		validity:   classify(kind, fullClean, base, entries),
+		candidates: generateCandidates(kind, tokenPrefix, userPrefix, openingQuote, base, entries, limit, m.HiddenFiles, parent),
 	}
 }

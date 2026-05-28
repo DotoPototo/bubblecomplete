@@ -58,13 +58,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	// If the input has changed, update the completions and validate the input
 	if m.input.Value() != "" && m.input.Value() != m.lastInput && m.completionHolder == "" && !m.showAll {
 		m.lastInput = m.input.Value()
+		m.recomputePathState()
 		m.completions, m.matchPrefix = m.getCompletions()
 		m.validationErr = m.validateInput()
 		m.applyInputValidationStyle()
-	} else if m.input.Value() == "" && m.validationErr != nil {
-		m.validationErr = nil
+	} else if m.input.Value() == "" && m.lastInput != "" {
+		// Input cleared. Always reset lastInput and pathState so a stale
+		// path-completion overlay can't survive a delete-all; clear the
+		// validation style only when there's an error to clear.
 		m.lastInput = ""
-		m.applyInputValidationStyle()
+		m.pathState = pathState{}
+		if m.validationErr != nil {
+			m.validationErr = nil
+			m.applyInputValidationStyle()
+		}
 	}
 
 	// If not loaded, start the blinking cursor
@@ -106,6 +113,7 @@ func (m Model) resetModel() Model {
 	m.matchPrefix = ""
 	m.lastInput = ""
 	m.validationErr = nil
+	m.pathState = pathState{}
 	m = m.clearTransientCompletionState()
 	m.applyInputValidationStyle()
 	return m
