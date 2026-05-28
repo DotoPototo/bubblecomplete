@@ -59,6 +59,28 @@ type pathState struct {
 	// candidates is the list rendered in place of the normal completion
 	// rows when active and non-empty.
 	candidates []pathCompletion
+	// droppedSorted is the count of fully-verified matching entries that
+	// passed the kind/hidden/prefix filters but were truncated because
+	// the survivor list exceeded [Model.FilesystemCompletionLimit].
+	// These are real "+ N more" candidates the user could reach by
+	// narrowing the prefix — the renderer surfaces them as the primary
+	// truncation hint.
+	droppedSorted int
+	// unresolvedEntries is the count of symlink-OR-unknown-kind entries we
+	// could NOT verify because the per-pass stat budget was exhausted.
+	// Some might be valid candidates after resolution; some might be
+	// broken symlinks or the wrong kind for the active argument. The
+	// renderer surfaces this with weaker wording than droppedSorted —
+	// it's a "couldn't classify" signal, not a "found more" signal.
+	//
+	// The field name says "entries" because kindUnknown entries also count
+	// here, but the user-facing footer wording says "symlinks" because in
+	// practice the unknown-kind case is extremely rare (Go's stdlib
+	// resolves DT_UNKNOWN via lstat at readdir time, so kindUnknown only
+	// surfaces for non-standard fs.FS implementations). The naming
+	// asymmetry is deliberate: internal precision, UI clarity for the
+	// realistic case.
+	unresolvedEntries int
 }
 
 // pathCompletion is a [completion] backed by a filesystem entry under the
@@ -382,9 +404,22 @@ type candidateRequest struct {
 // Symlink target kinds are resolved via [os.Stat] for entries that survive
 // the prefix and hidden filters; [statBudget] bounds the worst-case stat
 // count per pass.
-func generateCandidates(req candidateRequest) []pathCompletion {
+//
+// Returns the candidate list plus two separate drop counts:
+//   - droppedSorted: matching entries that passed all filters but were
+//     truncated because the survivor list exceeded the configured limit.
+//     These are verified "+ N more" — narrowing the prefix would reach them.
+//   - unresolvedEntries: symlink/unknown-kind entries the stat budget
+//     couldn't classify in this pass. Some might be valid candidates if
+//     resolved; some might be broken or the wrong kind. These get weaker
+//     UI treatment than droppedSorted.
+//
+// Keeping the two counts separate (rather than summing them) lets the
+// renderer phrase the footer honestly: the strong "+ N more" claim only
+// applies to verified drops.
+func generateCandidates(req candidateRequest) (candidates []pathCompletion, droppedSorted, unresolvedEntries int) {
 	if req.entry.err != nil {
-		return nil
+		return nil, 0, 0
 	}
 	limit := max(req.limit, 1)
 
@@ -413,12 +448,13 @@ func generateCandidates(req candidateRequest) []pathCompletion {
 		wasSymlink := k == kindSymlink
 		if k == kindSymlink || k == kindUnknown {
 			if statsRemaining <= 0 {
-				continue // budget exhausted; drop
+				unresolvedEntries++
+				continue // budget exhausted; drop (kind unverified)
 			}
 			statsRemaining--
 			info, err := os.Stat(filepath.Join(req.parent, name))
 			if err != nil {
-				continue // broken symlink or stat failure
+				continue // broken symlink or stat failure — verified failure, not a drop
 			}
 			switch {
 			case info.IsDir():
@@ -445,6 +481,7 @@ func generateCandidates(req candidateRequest) []pathCompletion {
 	})
 
 	if len(survivors) > limit {
+		droppedSorted = len(survivors) - limit
 		survivors = survivors[:limit]
 	}
 
@@ -452,7 +489,7 @@ func generateCandidates(req candidateRequest) []pathCompletion {
 	for i, s := range survivors {
 		out[i] = buildCompletion(s.name, s.isDir, s.isSymlink, req.tokenPrefix, req.userPrefix, req.openingQuote)
 	}
-	return out
+	return out, droppedSorted, unresolvedEntries
 }
 
 // includeKind applies the candidate-inclusion table:
@@ -595,24 +632,28 @@ func (m *Model) recomputePathState() {
 
 	limit := max(m.FilesystemCompletionLimit, 1)
 
+	candidates, droppedSorted, unresolvedEntries := generateCandidates(candidateRequest{
+		kind:         a.kind,
+		tokenPrefix:  a.tokenPrefix,
+		userPrefix:   userPrefix,
+		openingQuote: a.openingQuote,
+		base:         base,
+		entry:        entries,
+		limit:        limit,
+		hiddenFiles:  m.HiddenFiles,
+		parent:       parent,
+	})
+
 	m.pathState = pathState{
-		active:     true,
-		kind:       a.kind,
-		argName:    a.name,
-		valueStart: a.valueStart,
-		valueEnd:   a.valueEnd,
-		base:       base,
-		validity:   classify(a.kind, fullClean, base, entries),
-		candidates: generateCandidates(candidateRequest{
-			kind:         a.kind,
-			tokenPrefix:  a.tokenPrefix,
-			userPrefix:   userPrefix,
-			openingQuote: a.openingQuote,
-			base:         base,
-			entry:        entries,
-			limit:        limit,
-			hiddenFiles:  m.HiddenFiles,
-			parent:       parent,
-		}),
+		active:            true,
+		kind:              a.kind,
+		argName:           a.name,
+		valueStart:        a.valueStart,
+		valueEnd:          a.valueEnd,
+		base:              base,
+		validity:          classify(a.kind, fullClean, base, entries),
+		candidates:        candidates,
+		droppedSorted:     droppedSorted,
+		unresolvedEntries: unresolvedEntries,
 	}
 }

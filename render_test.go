@@ -593,3 +593,61 @@ func TestFindMatchRange(t *testing.T) {
 		})
 	}
 }
+
+// TestRenderTruncationFooter_BranchWording locks each of the three footer
+// wording branches: verified-only ("+ N more"), unresolved-only ("N
+// symlinks unresolved"), and combined ("+ N more (M unresolved)"). The
+// integration test (TestRender_TruncationFooter_AppearsWhenCandidatesDropped)
+// exercises the verified-only case end-to-end through Update; this is the
+// direct unit-test counterpart for the wording dispatch.
+func TestRenderTruncationFooter_BranchWording(t *testing.T) {
+	m, err := New(TestCommands, 100)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.pathState.active = true
+
+	cases := []struct {
+		name              string
+		droppedSorted     int
+		unresolvedEntries int
+		wantSubstr        []string
+		dontWant          []string
+	}{
+		{
+			name:          "verified drops only",
+			droppedSorted: 5,
+			wantSubstr:    []string{"+ 5 more", "type to narrow"},
+			dontWant:      []string{"unresolved"},
+		},
+		{
+			name:              "unresolved only (weaker wording)",
+			unresolvedEntries: 3,
+			wantSubstr:        []string{"3 symlinks unresolved", "narrow to filter"},
+			dontWant:          []string{"+ ", "more"},
+		},
+		{
+			name:              "both drop kinds combined",
+			droppedSorted:     5,
+			unresolvedEntries: 3,
+			wantSubstr:        []string{"+ 5 more", "3 unresolved", "type to narrow"},
+		},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			m.pathState.droppedSorted = c.droppedSorted
+			m.pathState.unresolvedEntries = c.unresolvedEntries
+			got := m.renderTruncationFooter(0)
+			for _, want := range c.wantSubstr {
+				if !strings.Contains(got, want) {
+					t.Errorf("footer missing %q; got %q", want, got)
+				}
+			}
+			for _, no := range c.dontWant {
+				if strings.Contains(got, no) {
+					t.Errorf("footer should NOT contain %q; got %q", no, got)
+				}
+			}
+		})
+	}
+}

@@ -1,6 +1,7 @@
 package bubblecomplete
 
 import (
+	"fmt"
 	"strings"
 
 	tea "charm.land/bubbletea/v2"
@@ -228,10 +229,52 @@ func (m Model) showCompletionsRender() string {
 	style := m.getCompletionsStyle(start, end, len(rendered))
 	renderedBox := style.Margin(0, 0, 0, offset).Render(box)
 
+	// When path completions were dropped — either truncated post-sort or
+	// skipped because the symlink stat budget ran out — append a subtle
+	// footer line BELOW the box describing what's missing. The footer is
+	// render-only (never added to m.completions), so Tab cycling cannot
+	// select or accept it as a completion row. Left-aligned with the box.
+	if m.pathState.active && (m.pathState.droppedSorted > 0 || m.pathState.unresolvedEntries > 0) {
+		footer := m.renderTruncationFooter(offset)
+		renderedBox = lipgloss.JoinVertical(lipgloss.Left, renderedBox, footer)
+	}
+
 	if m.CompletionsPosition == PositionAbove {
 		return renderedBox + "\n" + m.renderedInput()
 	}
 	return m.renderedInput() + "\n" + renderedBox
+}
+
+// renderTruncationFooter formats the hint that appears below the
+// completion box when generateCandidates dropped some matches. Two
+// distinct counts get distinct wording:
+//
+//   - droppedSorted is verified — those entries passed the kind and prefix
+//     filters and would be reachable by narrowing the prefix. Surfaced as
+//     "+ N more".
+//   - unresolvedEntries is unverified — symlinks the stat budget skipped.
+//     Some might be valid, some might be broken or wrong-kind. Surfaced
+//     with weaker "N unresolved" wording so we don't over-promise results.
+//
+// Combined wording when both counts are non-zero. Styled subtly (muted
+// foreground, italic) so it doesn't compete with the active completion
+// rows. Left margin matches the box.
+func (m Model) renderTruncationFooter(leftMargin int) string {
+	var text string
+	switch {
+	case m.pathState.droppedSorted > 0 && m.pathState.unresolvedEntries > 0:
+		text = fmt.Sprintf("+ %d more (%d unresolved) — type to narrow",
+			m.pathState.droppedSorted, m.pathState.unresolvedEntries)
+	case m.pathState.droppedSorted > 0:
+		text = fmt.Sprintf("+ %d more — type to narrow", m.pathState.droppedSorted)
+	default: // only unresolvedEntries > 0
+		text = fmt.Sprintf("%d symlinks unresolved — narrow to filter",
+			m.pathState.unresolvedEntries)
+	}
+	return m.styles.Completion.Description.
+		Italic(true).
+		MarginLeft(leftMargin).
+		Render(text)
 }
 
 func (m Model) renderCompletionRow(row completionRow, titleWidth, completionsWidth int, selected, alt bool) string {

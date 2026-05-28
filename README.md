@@ -274,6 +274,8 @@ bc.SetKeyMap(k)
 
 When active, the completion list is replaced wholesale with matching entries from the relevant parent directory — directories first (with a trailing `/` for navigation), then files, sorted case-fold. `Tab` cycles forward, `Shift+Tab` cycles backward, `Right` (or typing) accepts. Tab-accepting a directory adds the trailing slash so the next keystroke drills into it. When there's only **one** candidate, `Tab` auto-accepts immediately and exits cycling — so a second `Tab` lists the children of the just-accepted directory, matching shell tab-completion behaviour.
 
+If the directory contains more matches than `FilesystemCompletionLimit` (default 200), the list is capped and a subtle footer appears below the completion box. The footer wording reflects what we know: `+ N more — type to narrow` when N verified candidates were dropped after the kind filter, or `N symlinks unresolved — narrow to filter` (weaker wording) when only the symlink stat budget was exhausted and we couldn't verify those entries' kinds. Both forms combine when both kinds of drop happen. The footer is informational only — it is NOT a selectable completion row, so `Tab` cycling can't accidentally accept it as input.
+
 The typed value gets a coloured overlay reflecting its filesystem state:
 
 - **green** — resolves to an entry of the expected kind

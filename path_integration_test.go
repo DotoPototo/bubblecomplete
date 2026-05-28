@@ -1,7 +1,9 @@
 package bubblecomplete
 
 import (
+	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	tea "charm.land/bubbletea/v2"
@@ -272,6 +274,120 @@ func renderWithFeature(t *testing.T, on bool, input string) string {
 	m := newPathTestModel(t, on)
 	m = simulateTyping(t, m, input)
 	return m.Render()
+}
+
+// TestRender_TruncationFooter_AppearsWhenCandidatesDropped exercises the
+// "+ N more — type to narrow" footer end-to-end: types into a directory
+// with more matches than the configured limit, asserts (1) pathState
+// records the drop count, (2) the rendered output contains the footer
+// text, and (3) the footer is NOT inside m.completions (so Tab cycling
+// can't accidentally accept it as a row).
+func TestRender_TruncationFooter_AppearsWhenCandidatesDropped(t *testing.T) {
+	dir := t.TempDir()
+	// 8 files, all matching prefix "f", limit 3 → 5 dropped.
+	for i := range 8 {
+		mustWriteFile(t, filepath.Join(dir, "f"+string(rune('a'+i))+".txt"))
+	}
+
+	m, err := New(pathTestCommands(), 200,
+		WithFilesystemCompletions(true),
+		WithFilesystemCompletionLimit(3),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "f"))
+
+	if m.pathState.droppedSorted != 5 {
+		t.Errorf("pathState.droppedSorted = %d, want 5 (8 matches − limit 3)", m.pathState.droppedSorted)
+	}
+	if len(m.completions) != 3 {
+		t.Errorf("len(m.completions) = %d, want 3 (limit)", len(m.completions))
+	}
+	for _, c := range m.completions {
+		if strings.Contains(c.getName(), "more") {
+			t.Errorf("footer must NOT be a completion row (Tab would accept it): %q", c.getName())
+		}
+	}
+
+	out := m.Render()
+	if !strings.Contains(out, "+ 5 more") {
+		t.Errorf("expected '+ 5 more' footer text in render output; got:\n%s", out)
+	}
+	if !strings.Contains(out, "type to narrow") {
+		t.Errorf("expected 'type to narrow' hint in footer; got:\n%s", out)
+	}
+}
+
+// TestRender_TruncationFooter_UnresolvedOnly exercises the weaker-wording
+// branch end-to-end: a directory of symlinks where the stat budget can
+// resolve N (≤ limit) of them, leaving the rest unresolved with kind
+// unknown. The footer should use "symlinks unresolved — narrow to
+// filter", NOT the strong "+ N more" form, because we can't actually
+// claim the unresolved entries would be valid candidates.
+func TestRender_TruncationFooter_UnresolvedOnly(t *testing.T) {
+	dir := t.TempDir()
+	target := filepath.Join(dir, "target.txt")
+	mustWriteFile(t, target)
+	// 20 symlinks. limit=16 so statBudget(16)=16 (the floor). 16 resolve to
+	// files, all pass the FileArgument inclusion filter; sort+truncate
+	// keeps all 16 (no sort drop). The remaining 4 symlinks are budget-
+	// skipped → unresolved.
+	const symlinkCount = 20
+	for i := range symlinkCount {
+		name := filepath.Join(dir, "ln"+string(rune('a'+i)))
+		if err := os.Symlink(target, name); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	m, err := New(pathTestCommands(), 500,
+		WithFilesystemCompletions(true),
+		WithFilesystemCompletionLimit(16),
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "ln"))
+
+	if m.pathState.droppedSorted != 0 {
+		t.Errorf("droppedSorted = %d, want 0 (resolved set fits within limit)", m.pathState.droppedSorted)
+	}
+	if m.pathState.unresolvedEntries != 4 {
+		t.Errorf("unresolvedEntries = %d, want 4 (20 symlinks − statBudget floor 16)", m.pathState.unresolvedEntries)
+	}
+
+	out := m.Render()
+	if !strings.Contains(out, "4 symlinks unresolved") {
+		t.Errorf("expected 'N symlinks unresolved' weaker wording in render; got:\n%s", out)
+	}
+	if !strings.Contains(out, "narrow to filter") {
+		t.Errorf("expected 'narrow to filter' suffix in unresolved-only footer; got:\n%s", out)
+	}
+	if strings.Contains(out, "+ ") && strings.Contains(out, "more") {
+		t.Errorf("unresolved-only footer must NOT use the strong '+ N more' wording; got:\n%s", out)
+	}
+}
+
+// TestRender_TruncationFooter_HiddenWhenNoDrops asserts the footer does
+// not appear when the candidate list fit within the limit. Cheap
+// regression guard so we don't accidentally show "+ 0 more" or any
+// truncation hint when nothing was dropped.
+func TestRender_TruncationFooter_HiddenWhenNoDrops(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
+
+	m := newPathTestModel(t, true)
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "f"))
+
+	if m.pathState.droppedSorted != 0 || m.pathState.unresolvedEntries != 0 {
+		t.Fatalf("setup: expected both drop counts 0, got droppedSorted=%d unresolvedEntries=%d",
+			m.pathState.droppedSorted, m.pathState.unresolvedEntries)
+	}
+	out := m.Render()
+	if strings.Contains(out, "more") {
+		t.Errorf("did not expect 'more' anywhere in render when no drops; got:\n%s", out)
+	}
 }
 
 // TestRender_OverlayChangesOutputByValidity asserts that the rendered output
