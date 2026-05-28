@@ -33,8 +33,8 @@ func validateCommandInput(input string, commands []*Command) error {
 		part := parts[i]
 
 		if isCommand {
-			cmd, err := findCommand(currentCommands, part)
-			if err != nil {
+			cmd, ok := findCommand(currentCommands, part)
+			if !ok {
 				if parentCmd == nil {
 					return errInvalidCommand(part)
 				}
@@ -135,8 +135,8 @@ func validateFlag(part string, parts []string, i *int, parentCmd *Command, globa
 	}
 
 	allFlags := slices.Concat(parentCmd.Flags, globalFlags)
-	arg, err := findFlag(allFlags, argName)
-	if err != nil {
+	arg, ok := findFlag(allFlags, argName)
+	if !ok {
 		return errFlagNotFound(argName)
 	}
 
@@ -221,8 +221,8 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 		argName := "-" + string(combinedFlags[j])
 		argValue := ""
 
-		arg, err := findFlag(allFlags, argName)
-		if err != nil {
+		arg, ok := findFlag(allFlags, argName)
+		if !ok {
 			return errFlagNotFound(argName)
 		}
 
@@ -238,8 +238,7 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 			}
 		}
 
-		err = validateArgumentValue(arg, argValue)
-		if err != nil {
+		if err := validateArgumentValue(arg, argValue); err != nil {
 			return err
 		}
 	}
@@ -262,22 +261,28 @@ func validatePositionalArgument(part string, positionalIndex *int, parentCmd *Co
 	return nil
 }
 
-func findCommand(commands []*Command, name string) (*Command, error) {
+// findCommand returns the command matching name, or (nil, false) if none.
+// Returns a bool rather than an error because the caller only branches on
+// missing/present — the error message was never inspected and allocating one
+// per validation pass added pointless overhead on the keystroke hot path.
+func findCommand(commands []*Command, name string) (*Command, bool) {
 	for _, cmd := range commands {
 		if cmd.Command == name {
-			return cmd, nil
+			return cmd, true
 		}
 	}
-	return nil, errors.New("command not found")
+	return nil, false
 }
 
-func findFlag(arguments []*Flag, name string) (*Flag, error) {
-	for _, arg := range arguments {
-		if arg.ShortFlag == name || arg.LongFlag == name || arg.PsFlag == name {
-			return arg, nil
+// findFlag returns the flag whose ShortFlag/LongFlag/PsFlag matches name, or
+// (nil, false) if none. Bool return for the same reason as [findCommand].
+func findFlag(flags []*Flag, name string) (*Flag, bool) {
+	for _, f := range flags {
+		if f.ShortFlag == name || f.LongFlag == name || f.PsFlag == name {
+			return f, true
 		}
 	}
-	return nil, errors.New("argument not found")
+	return nil, false
 }
 
 func validateArgumentValue(arg argument, value string) error {

@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 )
 
-type historyFileJson struct {
+type historyFileJSON struct {
 	History []string `json:"history"`
 }
 
@@ -64,7 +64,7 @@ func (m *Model) saveHistoryToFile() error {
 	if m.historyFilePath == "" {
 		return nil
 	}
-	data := historyFileJson{History: m.History}
+	data := historyFileJSON{History: m.History}
 	jsonData, err := json.Marshal(data)
 	if err != nil {
 		return err
@@ -110,7 +110,7 @@ func (m *Model) loadHistoryFromFile() error {
 		return nil
 	}
 
-	jsonData := historyFileJson{}
+	jsonData := historyFileJSON{}
 	if err := json.Unmarshal(data, &jsonData); err != nil {
 		return err
 	}

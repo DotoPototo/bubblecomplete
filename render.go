@@ -269,12 +269,18 @@ func (m Model) calculateCompletionsOffset(completions string) int {
 
 	offset := 0
 
-	// If we're about to start typing a new part, set the offset to the end of the string
-	if strings.HasSuffix(input, " ") && (!strings.Contains(parts[len(parts)-1], " ") || stringEndsInQuote(parts[len(parts)-1])) {
+	// Offset anchors to the end of the input when we're about to start a
+	// fresh part (trailing space and the previous part is either a bare
+	// word or a closed-quote token); otherwise anchor to the start of the
+	// last part so completions sit under what's actively being typed.
+	lastPart := parts[len(parts)-1]
+	endsInSpace := strings.HasSuffix(input, " ")
+	lastPartIsBareWord := !strings.Contains(lastPart, " ")
+	startingNewPart := endsInSpace && (lastPartIsBareWord || stringEndsInQuote(lastPart))
+	if startingNewPart {
 		offset = (promptWidth + lipgloss.Width(input)) % m.width
 	} else {
-		// If we're typing, set the offset to the end of the last part
-		trimmedInput := input[:strings.LastIndex(input, parts[len(parts)-1])]
+		trimmedInput := input[:strings.LastIndex(input, lastPart)]
 		offset = (promptWidth + lipgloss.Width(trimmedInput)) % m.width
 	}
 

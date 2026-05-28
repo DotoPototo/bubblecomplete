@@ -186,9 +186,16 @@ func handlePositionalArgumentCompletions(
 		completions = append(completions, flagCompletions...)
 	}
 
-	// Handle positional argument completions
-	enteringPosArg := (len(posArgs) > 0 || strings.HasSuffix(input, " ")) && len(posArgs) < len(cmd.PositionalArguments)
-	enteringLastPosArg := len(posArgs) == len(cmd.PositionalArguments) && !strings.HasPrefix(argParts[len(argParts)-1], "-")
+	// Handle positional argument completions. Both flags read off argParts'
+	// last token, which is only safe when argParts is non-empty — short-
+	// circuiting on len(argParts) > 0 keeps this panic-free for inputs that
+	// end immediately after the command word (e.g. "git ").
+	startedTyping := len(posArgs) > 0 || strings.HasSuffix(input, " ")
+	posArgsLeft := len(posArgs) < len(cmd.PositionalArguments)
+	posArgsFull := len(posArgs) == len(cmd.PositionalArguments)
+	lastIsPositional := len(argParts) > 0 && !strings.HasPrefix(argParts[len(argParts)-1], "-")
+	enteringPosArg := startedTyping && posArgsLeft
+	enteringLastPosArg := posArgsFull && lastIsPositional
 	if enteringPosArg || enteringLastPosArg {
 		completions = append(completions, getPositionalArgumentCompletions(input, cmd, posArgs)...)
 		return completions
@@ -272,7 +279,12 @@ func isEnteringPosArgValue(input string, finalCommand *Command, posArgParts []st
 // getFlagCompletions gets completions for flags based on the input
 //
 // Returns a list of completions and a boolean indicating if this should be the only completion shown or not
-func getFlagCompletions(input string, finalCommand *Command, flagArgParts []string, globalFlags []*Flag) ([]completion, bool) {
+func getFlagCompletions(
+	input string,
+	finalCommand *Command,
+	flagArgParts []string,
+	globalFlags []*Flag,
+) ([]completion, bool) {
 	completions := []completion{}
 
 	allFlags := slices.Concat(finalCommand.Flags, globalFlags)
@@ -341,7 +353,12 @@ func filterFlagsByPrefix(input, prefix string, allFlags []*Flag) []completion {
 	return out
 }
 
-func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []string, globalFlags []*Flag) (bool, *Flag) {
+func isEnteringFlagValue(
+	input string,
+	finalCommand *Command,
+	flagArgParts []string,
+	globalFlags []*Flag,
+) (bool, *Flag) {
 	if len(flagArgParts) == 0 {
 		return false, nil
 	}
@@ -373,7 +390,8 @@ func isEnteringFlagValue(input string, finalCommand *Command, flagArgParts []str
 
 	// If we're entering a flag value with an equals sign between the flag and value
 	if strings.Contains(lastArg, "=") {
-		if (!stringEndsInQuoteWithoutEquals(lastArg)) || (stringEndsInQuoteWithoutEquals(lastArg) && !strings.HasSuffix(input, " ")) {
+		// (!A) || (A && !B)  reduces to  !(A && B)
+		if !(stringEndsInQuoteWithoutEquals(lastArg) && strings.HasSuffix(input, " ")) {
 			for _, flag := range allFlags {
 				// If the flag isn't a PowerShell flag, ensure it's a long flag
 				if flag.PsFlag == "" && !strings.HasPrefix(lastArg, "--") {
@@ -400,12 +418,14 @@ func needToEnterFlagValue(finalCommand *Command, flagArgParts []string, globalFl
 			flagToCompare = "-" + lastArgument[len(lastArgument)-1:]
 		}
 
-		// If the last argument contains a flag and isn't a long flag / psflag with an equals sign pattern
-		if containsFlag(flagToCompare, flag) && !strings.Contains(lastArgument, flag.LongFlag+"=") && !strings.Contains(lastArgument, flag.PsFlag+"=") {
-			// Bool arguments don't need a value
-			if flag.Type != BoolArgument {
-				return true, flag
-			}
+		// Only treat the last token as a flag that's waiting on a value if
+		// it actually references this flag AND hasn't already taken a value
+		// via long-form or PsFlag "=value" syntax.
+		hasFlag := containsFlag(flagToCompare, flag)
+		hasLongEquals := strings.Contains(lastArgument, flag.LongFlag+"=")
+		hasPsEquals := strings.Contains(lastArgument, flag.PsFlag+"=")
+		if hasFlag && !hasLongEquals && !hasPsEquals && flag.Type != BoolArgument {
+			return true, flag
 		}
 	}
 

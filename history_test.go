@@ -70,7 +70,7 @@ func TestHistory_FileSaveSurvivesEnter(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var got historyFileJson
+	var got historyFileJSON
 	if err := json.Unmarshal(raw, &got); err != nil {
 		t.Fatalf("history file is not valid JSON: %v\nraw: %s", err, raw)
 	}
@@ -84,7 +84,7 @@ func TestHistory_OptionOrderDoesNotMatter(t *testing.T) {
 	path := filepath.Join(dir, "history.json")
 
 	// Seed five entries on disk so loading would exceed any non-default limit.
-	seed := historyFileJson{History: []string{"a", "b", "c", "d", "e"}}
+	seed := historyFileJSON{History: []string{"a", "b", "c", "d", "e"}}
 	raw, _ := json.Marshal(seed)
 	if err := os.WriteFile(path, raw, 0644); err != nil {
 		t.Fatal(err)
@@ -123,7 +123,7 @@ func TestHistory_LoadCapsAtHistoryLimit(t *testing.T) {
 	path := filepath.Join(dir, "history.json")
 
 	// Seed the file with five entries.
-	seed := historyFileJson{History: []string{"a", "b", "c", "d", "e"}}
+	seed := historyFileJSON{History: []string{"a", "b", "c", "d", "e"}}
 	raw, _ := json.Marshal(seed)
 	if err := os.WriteFile(path, raw, 0644); err != nil {
 		t.Fatal(err)

@@ -1,6 +1,7 @@
 package bubblecomplete
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"unicode"
@@ -156,12 +157,22 @@ type argument interface {
 type ArgumentType string
 
 const (
-	StringArgument  ArgumentType = "string"
-	IntArgument     ArgumentType = "int"
-	FloatArgument   ArgumentType = "float"
-	BoolArgument    ArgumentType = "bool"
-	FileArgument    ArgumentType = "file"
-	DirArgument     ArgumentType = "dir"
+	// StringArgument accepts any text. Values containing whitespace must be
+	// quoted by the user.
+	StringArgument ArgumentType = "string"
+	// IntArgument accepts any value parseable by strconv.Atoi.
+	IntArgument ArgumentType = "int"
+	// FloatArgument accepts any value parseable by strconv.ParseFloat.
+	FloatArgument ArgumentType = "float"
+	// BoolArgument is presence-only for flags: the flag's presence in the
+	// input is true, its absence is false. Positional bool arguments have no
+	// runtime use today but the type is reserved.
+	BoolArgument ArgumentType = "bool"
+	// FileArgument requires the value to resolve to an existing file on disk.
+	FileArgument ArgumentType = "file"
+	// DirArgument requires the value to resolve to an existing directory.
+	DirArgument ArgumentType = "dir"
+	// FileDirArgument accepts an existing file or directory.
 	FileDirArgument ArgumentType = "filedir"
 )
 
@@ -175,27 +186,27 @@ type PositionalArgument struct {
 	Required    bool
 }
 
-func (a PositionalArgument) getName() string {
-	return a.Name
+func (p PositionalArgument) getName() string {
+	return p.Name
 }
 
-func (a PositionalArgument) getDescription() string {
+func (p PositionalArgument) getDescription() string {
 	isRequired := "required"
-	if !a.Required {
+	if !p.Required {
 		isRequired = "optional"
 	}
-	if a.Type == BoolArgument {
-		return fmt.Sprintf("%s [%s]", a.Description, isRequired)
+	if p.Type == BoolArgument {
+		return fmt.Sprintf("%s [%s]", p.Description, isRequired)
 	}
-	return fmt.Sprintf("%s [%s] [%s]", a.Description, a.Type, isRequired)
+	return fmt.Sprintf("%s [%s] [%s]", p.Description, p.Type, isRequired)
 }
 
-func (a PositionalArgument) getAutocomplete() string {
+func (p PositionalArgument) getAutocomplete() string {
 	return ""
 }
 
-func (a PositionalArgument) getType() ArgumentType {
-	return a.Type
+func (p PositionalArgument) getType() ArgumentType {
+	return p.Type
 }
 
 // Flag describes a single command-line flag. At least one of ShortFlag,
@@ -212,38 +223,38 @@ type Flag struct {
 	Persistent  bool
 }
 
-func (a Flag) getName() string {
-	if a.PsFlag != "" {
-		return a.PsFlag
+func (f Flag) getName() string {
+	if f.PsFlag != "" {
+		return f.PsFlag
 	}
-	if a.ShortFlag != "" && a.LongFlag != "" {
-		return fmt.Sprintf("%s %s", a.ShortFlag, a.LongFlag)
+	if f.ShortFlag != "" && f.LongFlag != "" {
+		return fmt.Sprintf("%s %s", f.ShortFlag, f.LongFlag)
 	}
-	if a.ShortFlag != "" {
-		return a.ShortFlag
+	if f.ShortFlag != "" {
+		return f.ShortFlag
 	}
-	return a.LongFlag
+	return f.LongFlag
 }
 
-func (a Flag) getDescription() string {
-	if a.Type == BoolArgument {
-		return a.Description
+func (f Flag) getDescription() string {
+	if f.Type == BoolArgument {
+		return f.Description
 	}
-	return fmt.Sprintf("%s [%s]", a.Description, a.Type)
+	return fmt.Sprintf("%s [%s]", f.Description, f.Type)
 }
 
-func (a Flag) getAutocomplete() string {
-	if a.PsFlag != "" {
-		return a.PsFlag
+func (f Flag) getAutocomplete() string {
+	if f.PsFlag != "" {
+		return f.PsFlag
 	}
-	if a.ShortFlag != "" {
-		return a.ShortFlag
+	if f.ShortFlag != "" {
+		return f.ShortFlag
 	}
-	return a.LongFlag
+	return f.LongFlag
 }
 
-func (a Flag) getType() ArgumentType {
-	return a.Type
+func (f Flag) getType() ArgumentType {
+	return f.Type
 }
 
 // MARK: Public Functions
@@ -381,10 +392,10 @@ func (m *Model) SetPlaceholder(placeholder string) {
 // it's given.
 func (c *Command) Validate() error {
 	if c == nil {
-		return fmt.Errorf("commands cannot be nil")
+		return errors.New("commands cannot be nil")
 	}
 	if c.Command == "" {
-		return fmt.Errorf("commands must have a command name")
+		return errors.New("commands must have a command name")
 	}
 	if strings.TrimSpace(c.Command) != c.Command {
 		return fmt.Errorf("command names cannot have leading or trailing whitespace: %q", c.Command)
@@ -447,13 +458,13 @@ func (c *Command) Validate() error {
 // Validate checks the positional argument has a name and a known ArgumentType.
 func (p *PositionalArgument) Validate() error {
 	if p == nil {
-		return fmt.Errorf("positional arguments cannot be nil")
+		return errors.New("positional arguments cannot be nil")
 	}
 	if p.Name == "" {
-		return fmt.Errorf("positional arguments must have a name")
+		return errors.New("positional arguments must have a name")
 	}
 	if p.Type == "" {
-		return fmt.Errorf("positional arguments must have a type")
+		return errors.New("positional arguments must have a type")
 	}
 	if !isValidArgumentType(p.Type) {
 		return fmt.Errorf("positional argument %q has an invalid type: %q", p.Name, p.Type)
@@ -467,10 +478,10 @@ func (p *PositionalArgument) Validate() error {
 // forms), and that Type is a known ArgumentType.
 func (f *Flag) Validate() error {
 	if f == nil {
-		return fmt.Errorf("flags cannot be nil")
+		return errors.New("flags cannot be nil")
 	}
 	if f.ShortFlag == "" && f.LongFlag == "" && f.PsFlag == "" {
-		return fmt.Errorf("flags must have at least one flag defined")
+		return errors.New("flags must have at least one flag defined")
 	}
 
 	// Short flag validation. Short flags must be a single ASCII letter:
@@ -481,11 +492,11 @@ func (f *Flag) Validate() error {
 	// names like "-1" or "-?".
 	if f.ShortFlag != "" {
 		if !strings.HasPrefix(f.ShortFlag, "-") {
-			return fmt.Errorf("short flags must start with a dash")
+			return errors.New("short flags must start with a dash")
 		}
 		body := f.ShortFlag[1:]
 		if body == "" {
-			return fmt.Errorf("flags must have a flag name")
+			return errors.New("flags must have a flag name")
 		}
 		if body == "-" {
 			return fmt.Errorf("short flag body cannot be a dash: %q", f.ShortFlag)
@@ -498,11 +509,11 @@ func (f *Flag) Validate() error {
 	// Long flag validation
 	if f.LongFlag != "" {
 		if !strings.HasPrefix(f.LongFlag, "--") {
-			return fmt.Errorf("long flags must start with two dashes")
+			return errors.New("long flags must start with two dashes")
 		}
 		body := f.LongFlag[2:]
 		if body == "" {
-			return fmt.Errorf("flags must have a flag name")
+			return errors.New("flags must have a flag name")
 		}
 		if containsWhitespace(body) {
 			return fmt.Errorf("long flag names cannot contain whitespace: %q", f.LongFlag)
@@ -512,27 +523,27 @@ func (f *Flag) Validate() error {
 	// PowerShell flag validation
 	if f.PsFlag != "" {
 		if !strings.HasPrefix(f.PsFlag, "-") {
-			return fmt.Errorf("powershell flags must start with a dash")
+			return errors.New("powershell flags must start with a dash")
 		}
 		body := f.PsFlag[1:]
 		if body == "" {
-			return fmt.Errorf("flags must have a flag name")
+			return errors.New("flags must have a flag name")
 		}
 		// PsFlag bodies are matched by string prefix at runtime, so multi-byte
 		// runes are fine. Use rune count rather than byte length here.
 		if utf8.RuneCountInString(body) < 2 {
-			return fmt.Errorf("powershell flags must be more than one character")
+			return errors.New("powershell flags must be more than one character")
 		}
 		if containsWhitespace(body) {
 			return fmt.Errorf("powershell flag names cannot contain whitespace: %q", f.PsFlag)
 		}
 		if f.ShortFlag != "" || f.LongFlag != "" {
-			return fmt.Errorf("powershell flags cannot have short or long flags defined")
+			return errors.New("powershell flags cannot have short or long flags defined")
 		}
 	}
 
 	if f.Type == "" {
-		return fmt.Errorf("flags must have a type")
+		return errors.New("flags must have a type")
 	}
 	if !isValidArgumentType(f.Type) {
 		return fmt.Errorf("flag has an invalid type: %q", f.Type)
