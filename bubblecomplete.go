@@ -29,25 +29,24 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmds []tea.Cmd
 
 	// Handle key presses
-	switch msg := msg.(type) {
-	case tea.KeyPressMsg:
+	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
-		case key.Matches(msg, m.keymap.NextCompletion):
+		case key.Matches(keyMsg, m.keymap.NextCompletion):
 			m, cmd = m.keyTab(true)
-		case key.Matches(msg, m.keymap.PrevCompletion):
+		case key.Matches(keyMsg, m.keymap.PrevCompletion):
 			m, cmd = m.keyTab(false)
-		case key.Matches(msg, m.keymap.Submit):
+		case key.Matches(keyMsg, m.keymap.Submit):
 			m, cmd = m.keyEnter()
-		case key.Matches(msg, m.keymap.HistoryPrev):
+		case key.Matches(keyMsg, m.keymap.HistoryPrev):
 			m, cmd = m.keyUp()
-		case key.Matches(msg, m.keymap.HistoryNext):
+		case key.Matches(keyMsg, m.keymap.HistoryNext):
 			m, cmd = m.keyDown()
-		case key.Matches(msg, m.keymap.AcceptCompletion):
+		case key.Matches(keyMsg, m.keymap.AcceptCompletion):
 			m, cmd = m.keyRight()
-		case msg.String() == "backspace":
+		case keyMsg.String() == "backspace":
 			m, cmd = m.keyBackspace()
 		default:
-			m, cmd = m.keyDefault(msg)
+			m, cmd = m.keyDefault(keyMsg)
 		}
 	}
 	cmds = append(cmds, cmd)

@@ -211,7 +211,7 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 	// byte-by-byte below would produce confusing per-byte UnknownFlag
 	// errors (e.g. "-é" becomes "-\xc3" + "-\xa9"). Reject up-front as
 	// MalformedFlag so the user sees a single coherent error.
-	for k := 0; k < len(combinedFlags); k++ {
+	for k := range len(combinedFlags) {
 		if !isASCIILetter(combinedFlags[k]) {
 			return errInvalidArgumentToken(part)
 		}
@@ -221,7 +221,7 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 	// keystroke, so Concat-per-char would allocate redundantly.
 	allFlags := slices.Concat(parentCmd.Flags, globalFlags)
 
-	for j := 0; j < len(combinedFlags); j++ {
+	for j := range len(combinedFlags) {
 		argName := "-" + string(combinedFlags[j])
 		argValue := ""
 

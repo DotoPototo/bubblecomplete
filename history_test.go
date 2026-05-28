@@ -129,7 +129,7 @@ func TestHistory_OptionOrderDoesNotMatter(t *testing.T) {
 	// Seed five entries on disk so loading would exceed any non-default limit.
 	seed := historyFileJSON{History: []string{"a", "b", "c", "d", "e"}}
 	raw, _ := json.Marshal(seed)
-	if err := os.WriteFile(path, raw, 0644); err != nil {
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -168,7 +168,7 @@ func TestHistory_LoadCapsAtHistoryLimit(t *testing.T) {
 	// Seed the file with five entries.
 	seed := historyFileJSON{History: []string{"a", "b", "c", "d", "e"}}
 	raw, _ := json.Marshal(seed)
-	if err := os.WriteFile(path, raw, 0644); err != nil {
+	if err := os.WriteFile(path, raw, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -190,7 +190,7 @@ func TestHistory_LoadCapsAtHistoryLimit(t *testing.T) {
 func TestHistory_LoadEmptyFileIsNotError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "history.json")
-	if err := os.WriteFile(path, nil, 0644); err != nil {
+	if err := os.WriteFile(path, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -217,7 +217,7 @@ func TestHistory_LoadRejectsOversizedFile(t *testing.T) {
 	suffix := []byte(`"]}`)
 	padding := bytes.Repeat([]byte("a"), (10<<20)-len(prefix)-len(suffix)+1)
 	payload := append(append(prefix, padding...), suffix...)
-	if err := os.WriteFile(path, payload, 0644); err != nil {
+	if err := os.WriteFile(path, payload, 0o644); err != nil {
 		t.Fatal(err)
 	}
 
@@ -243,10 +243,10 @@ func TestHistory_SaveFailureSurfacesAsErr(t *testing.T) {
 	}
 
 	// Make the parent directory unwritable so saveHistoryToFile fails on rename.
-	if err := os.Chmod(dir, 0555); err != nil {
+	if err := os.Chmod(dir, 0o555); err != nil {
 		t.Skip("cannot chmod tmpdir read-only on this platform:", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	m = simulateTyping(t, m, "git status")
 	m, _ = pressEnter(t, m)
@@ -266,10 +266,10 @@ func TestError_ClearsAfterSuccessfulOperation(t *testing.T) {
 	}
 
 	// Trigger a save failure by making the dir read-only.
-	if err := os.Chmod(dir, 0555); err != nil {
+	if err := os.Chmod(dir, 0o555); err != nil {
 		t.Skip("cannot chmod tmpdir read-only:", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	m = simulateTyping(t, m, "git status")
 	m, _ = pressEnter(t, m)
@@ -278,7 +278,7 @@ func TestError_ClearsAfterSuccessfulOperation(t *testing.T) {
 	}
 
 	// Restore writability and submit a successful command.
-	if err := os.Chmod(dir, 0755); err != nil {
+	if err := os.Chmod(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	m = simulateTyping(t, m, "git status")
@@ -333,7 +333,7 @@ func TestSetHistoryFilePath_SurfacesNonIsNotExistStatErrors(t *testing.T) {
 	// os.IsNotExist — the old gate would have silently fallen through.
 	tmp := t.TempDir()
 	blocker := filepath.Join(tmp, "blocker")
-	if err := os.WriteFile(blocker, nil, 0644); err != nil {
+	if err := os.WriteFile(blocker, nil, 0o644); err != nil {
 		t.Fatal(err)
 	}
 	// blocker is a file; treating it as a parent dir must fail at Stat.
@@ -361,10 +361,10 @@ func TestHistory_RenameFailureCleansUpTempFile(t *testing.T) {
 	}
 
 	// Make the directory read-only so rename can't replace the destination.
-	if err := os.Chmod(dir, 0555); err != nil {
+	if err := os.Chmod(dir, 0o555); err != nil {
 		t.Skip("cannot chmod tmpdir read-only on this platform:", err)
 	}
-	t.Cleanup(func() { _ = os.Chmod(dir, 0755) })
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o755) })
 
 	m = simulateTyping(t, m, "git status")
 	m, _ = pressEnter(t, m)
@@ -373,7 +373,7 @@ func TestHistory_RenameFailureCleansUpTempFile(t *testing.T) {
 	}
 
 	// Restore writability so we can list the directory.
-	if err := os.Chmod(dir, 0755); err != nil {
+	if err := os.Chmod(dir, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	entries, err := os.ReadDir(dir)

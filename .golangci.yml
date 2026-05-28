@@ -1,48 +1,81 @@
 version: "2"
 
 run:
+  concurrency: 4
   timeout: 5m
+  tests: true
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 50
 
 linters:
   default: standard
   enable:
     # Correctness
     - bodyclose
+    - copyloopvar
     - durationcheck
+    - errname
     - errorlint
     - exhaustive
+    - forcetypeassert
     - gocheckcompilerdirectives
     - nilerr
     - nilnesserr
+    - predeclared
     - reassign
     - rowserrcheck
     - sqlclosecheck
+    - wastedassign
 
-    # Performance
-    - prealloc
-
-    # Style / readability that's actually load-bearing here
+    # Style / readability that pulls weight here
+    - dupword
+    - gocritic
     - misspell
     - unconvert
     - unparam
     - usestdlibvars
-    - wastedassign
 
-    # Security beyond gosec defaults
+    # Modernization
+    - exptostd
+    - intrange
+
+    # Performance with low FP rate
+    - perfsprint
+    - prealloc
+
+    # Security
+    - bidichk
     - gosec
 
-    # Force //nolint to be specific and justified
+    # //nolint hygiene
     - nolintlint
 
   settings:
-    gosec:
-      excludes:
-        # Test fixtures intentionally use 0644/0755 and dynamic paths via t.TempDir().
-        - G304
-        - G306
-        - G302
+    errcheck:
+      check-type-assertions: true
+      # Close/Fprintf/cleanup-Remove on error paths or in defers carry
+      # no actionable signal at this site — every call here is either
+      # already wrapped or part of an atomic-write cleanup path where
+      # the primary error is what matters.
+      exclude-functions:
+        - (io.Closer).Close
+        - (*os.File).Close
+        - fmt.Fprintf
+        - fmt.Fprintln
+        - fmt.Fprint
+        - os.Remove
     exhaustive:
       default-signifies-exhaustive: true
+    gosec:
+      excludes:
+        # errcheck covers unhandled errors with better signal.
+        - G104
+        # Tests intentionally use looser file modes for fixtures; the
+        # rule applies in prod code only, where we already chmod 0o600.
+        - G302
+        - G306
     nolintlint:
       require-explanation: true
       require-specific: true
@@ -60,10 +93,12 @@ linters:
       # ones rather than introducing per-line nolint comments everywhere.
       - path: _test\.go
         linters:
-          - gosec
           - errcheck
-          - unparam
+          - forcetypeassert
+          - gosec
           - gosmopolitan
+          - perfsprint
+          - unparam
 
       # Key handler signatures all return (Model, tea.Cmd) for uniformity
       # with Bubble Tea conventions, even where the current implementation
@@ -75,4 +110,5 @@ linters:
 formatters:
   enable:
     - gofmt
+    - gofumpt
     - goimports

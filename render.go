@@ -239,15 +239,17 @@ func (m Model) getCompletionsStyle(startCompletionsIndex int, endCompletionsInde
 		return border
 	}
 
-	if startCompletionsIndex > 0 && endCompletionsIndex < rows {
+	hasItemsAbove := startCompletionsIndex > 0
+	hasItemsBelow := endCompletionsIndex < rows
+	switch {
+	case hasItemsAbove && hasItemsBelow:
 		return border.BorderTopForeground(scrollIndicatorColor).BorderBottomForeground(scrollIndicatorColor)
-	} else if startCompletionsIndex > 0 {
+	case hasItemsAbove:
 		return border.BorderTopForeground(scrollIndicatorColor)
-	} else if endCompletionsIndex < rows {
+	case hasItemsBelow:
 		return border.BorderBottomForeground(scrollIndicatorColor)
-	} else {
-		return border
 	}
+	return border
 }
 
 func (m Model) calculateCompletionsOffset(completions string) int {

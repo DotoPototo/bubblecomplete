@@ -138,7 +138,7 @@ func (m *Model) loadHistoryFromFile() error {
 		}
 		return err
 	}
-	defer func() { _ = f.Close() }()
+	defer f.Close()
 
 	// Read at most maxHistoryFileSize+1 so we can distinguish "exactly the
 	// cap" (valid) from "exceeds the cap" (rejected) without a separate

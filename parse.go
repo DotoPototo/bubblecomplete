@@ -78,11 +78,12 @@ func tokenize(input string) []token {
 		case char == ' ' && !inQuotes:
 			flush(pos)
 		case char == '"' || char == '\'':
-			if inQuotes && char == quoteChar {
+			switch {
+			case inQuotes && char == quoteChar:
 				inQuotes = false
 				closed = true
 				flush(pos + size)
-			} else if !inQuotes {
+			case !inQuotes:
 				// Only mark the token as Quoted (and record Quote) if the
 				// opening quote is the first character of the token.
 				// Mid-token quotes like in --flag="value" still drive the
@@ -96,7 +97,7 @@ func tokenize(input string) []token {
 				if openedToken {
 					quoted = true
 				}
-			} else {
+			default:
 				// in-quotes, different quote char: literal content
 				if tokenStart == -1 {
 					tokenStart = pos

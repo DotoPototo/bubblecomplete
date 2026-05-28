@@ -423,16 +423,26 @@ func TestRenderScrollbar(t *testing.T) {
 	}{
 		{"zero height returns nil", 0, 20, 0, nil},
 		{"zero total returns nil", 5, 0, 0, nil},
-		{"first window: thumb at top", 5, 20, 0,
-			[]string{thumb, track, track, track, track}},
-		{"last window: thumb at bottom", 5, 20, 15,
-			[]string{track, track, track, track, thumb}},
-		{"middle: thumb in middle", 5, 10, 2,
-			[]string{track, thumb, thumb, track, track}},
-		{"thumb size never zero on huge totals", 5, 1000, 0,
-			[]string{thumb, track, track, track, track}},
-		{"thumb clamped to height when total <= height", 5, 5, 0,
-			[]string{thumb, thumb, thumb, thumb, thumb}},
+		{
+			"first window: thumb at top", 5, 20, 0,
+			[]string{thumb, track, track, track, track},
+		},
+		{
+			"last window: thumb at bottom", 5, 20, 15,
+			[]string{track, track, track, track, thumb},
+		},
+		{
+			"middle: thumb in middle", 5, 10, 2,
+			[]string{track, thumb, thumb, track, track},
+		},
+		{
+			"thumb size never zero on huge totals", 5, 1000, 0,
+			[]string{thumb, track, track, track, track},
+		},
+		{
+			"thumb clamped to height when total <= height", 5, 5, 0,
+			[]string{thumb, thumb, thumb, thumb, thumb},
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
