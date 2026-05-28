@@ -398,13 +398,61 @@ func TestSuppression_FiresWhenErrorMatchesActiveArg(t *testing.T) {
 	}
 }
 
+// TestTabAutoAcceptDrillsIntoUniqueDir locks in the bash-like single-match
+// auto-accept behaviour: typing a prefix that uniquely matches a directory
+// and pressing Tab should accept it (input now ends in "uniquedir/") AND
+// exit cycling state so the next Tab lists the directory's children. Two
+// Tabs in a row drill one level deep.
+//
+// Uses cat (FileArgument) because FileArgument candidates include files
+// inside the drilled-into dir — exercising the auto-accept-then-recompute
+// path end-to-end. DirArgument would filter the file child out (dirs only)
+// which would make the drill-down land on empty candidates.
+func TestTabAutoAcceptDrillsIntoUniqueDir(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdir(t, filepath.Join(dir, "uniquedir"))
+	mustWriteFile(t, filepath.Join(dir, "uniquedir", "child.txt"))
+
+	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "uniq"))
+
+	// First Tab: single match → auto-accept, no cycling state, recompute
+	// runs the same Update tick.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	wantAfterFirst := "cat " + filepath.Join(dir, "uniquedir") + "/"
+	if got := m.input.Value(); got != wantAfterFirst {
+		t.Fatalf("after first Tab: got %q, want %q", got, wantAfterFirst)
+	}
+	if m.completionHolder != "" || m.completionIndex != -1 {
+		t.Errorf("single-match Tab should clear cycling state; holder=%q index=%d",
+			m.completionHolder, m.completionIndex)
+	}
+	if !pathCandidateNames(m.pathState.candidates).has("child.txt") {
+		t.Fatalf("expected child.txt candidate after auto-accept drill-down: %v",
+			pathCandidateNames(m.pathState.candidates))
+	}
+
+	// Second Tab: single child auto-accepts again, drilling to the file.
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	wantAfterSecond := "cat " + filepath.Join(dir, "uniquedir", "child.txt")
+	if got := m.input.Value(); got != wantAfterSecond {
+		t.Errorf("after second Tab: got %q, want %q", got, wantAfterSecond)
+	}
+}
+
 // TestRender_OverlayBypassedDuringCompletionCycling locks in that the
 // overlay is skipped while the user is cycling Tab completions. Without
 // the bypass, the frozen pathState offsets would mis-style the cycled
 // preview value.
 func TestRender_OverlayBypassedDuringCompletionCycling(t *testing.T) {
 	dir := t.TempDir()
+	// Two files with the same prefix → Tab enters cycling state. A single
+	// match would auto-accept and skip cycling entirely.
 	mustWriteFile(t, filepath.Join(dir, "foo.txt"))
+	mustWriteFile(t, filepath.Join(dir, "fox.txt"))
 
 	// Width must comfortably exceed the temp-dir path or the overflow
 	// guard, not the cycling bypass, would be what produces the

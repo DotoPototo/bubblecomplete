@@ -284,6 +284,22 @@ func (m Model) keyTab(forward bool) (Model, tea.Cmd) {
 	// Update the input with the current completion
 	m.input.SetValue(pretext + m.completions[m.completionIndex].getAutocomplete())
 	m.input.CursorEnd()
+
+	// Single-match acceptance: when there's exactly one completion to choose
+	// from, treat Tab as a final accept rather than entering cycling state.
+	// Clearing completionHolder here means the input-changed branch later
+	// in this same Update call (after textinput.Update) will recompute
+	// against the new input value — populating fresh completions and
+	// pathState for the just-accepted text. The next Tab then cycles
+	// among those new candidates, which for a directory match enables the
+	// shell-style drill-down: Tab on "cd Do" with a unique "Documents/"
+	// candidate accepts it AND repopulates with Documents/'s children, so
+	// the second Tab descends one level.
+	if len(m.completions) == 1 {
+		m.completionHolder = ""
+		m.completionIndex = -1
+		m.showAll = false
+	}
 	return m, nil
 }
 

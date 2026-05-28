@@ -229,7 +229,10 @@ func TestMultipleTabsThenEnter(t *testing.T) {
 func TestRightArrow_AcceptsTabCompletion(t *testing.T) {
 	m := newTestModel(t)
 
-	m = simulateTyping(t, m, "git stash a")
+	// "git c" matches multiple subcommands (commit, clone, checkout) so
+	// Tab enters cycling state. A single-match Tab would auto-accept and
+	// defeat the cycling assertions below.
+	m = simulateTyping(t, m, "git c")
 	m = simulateKey(t, m, tea.KeyTab)
 
 	if m.completionIndex < 0 {
@@ -257,9 +260,10 @@ func TestRightArrow_AcceptsTabCompletion(t *testing.T) {
 func TestCtrlE_RoutesToKeyRight(t *testing.T) {
 	// Verify ctrl+e is routed to the same handler as right arrow by checking
 	// that it clears the completion holder when a completion is selected.
+	// Multi-match input ensures cycling state is active after Tab.
 	m := newTestModel(t)
 
-	m = simulateTyping(t, m, "git stash a")
+	m = simulateTyping(t, m, "git c")
 	m = simulateKey(t, m, tea.KeyTab)
 
 	if m.completionHolder == "" {
@@ -297,8 +301,9 @@ func TestRightArrow_AfterCloseCompletions_NoOp(t *testing.T) {
 	// Tab to select a completion, then close the completion list.
 	// Right arrow afterwards should not resurrect any accept behavior;
 	// state stays at whatever CloseCompletions restored.
+	// Multi-match input ensures cycling state is active after Tab.
 	m := newTestModel(t)
-	m = simulateTyping(t, m, "git stash a")
+	m = simulateTyping(t, m, "git c")
 	m = simulateKey(t, m, tea.KeyTab)
 	if m.completionIndex < 0 {
 		t.Fatal("expected a selected completion after tab")
@@ -387,7 +392,8 @@ func TestEnter_PartialSubcommand_ReturnsError(t *testing.T) {
 func TestBackspace_ResetsCompletionState(t *testing.T) {
 	m := newTestModel(t)
 
-	m = simulateTyping(t, m, "git stash a")
+	// Multi-match input ensures cycling state is active after Tab.
+	m = simulateTyping(t, m, "git c")
 	m = simulateKey(t, m, tea.KeyTab)
 
 	if m.completionIndex < 0 {
@@ -407,7 +413,8 @@ func TestBackspace_ResetsCompletionState(t *testing.T) {
 func TestTypingAfterTab_ResetsCompletionState(t *testing.T) {
 	m := newTestModel(t)
 
-	m = simulateTyping(t, m, "git stash a")
+	// Multi-match input ensures cycling state is active after Tab.
+	m = simulateTyping(t, m, "git c")
 	m = simulateKey(t, m, tea.KeyTab)
 
 	if m.completionIndex < 0 {

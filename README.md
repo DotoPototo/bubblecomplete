@@ -272,7 +272,7 @@ bc.SetKeyMap(k)
 
 `WithFilesystemCompletions(true)` enables live filesystem completion and per-token validity colouring for any `FileArgument`, `DirArgument`, or `FileDirArgument` value the user is editing. Default is off; the feature is opt-in.
 
-When active, the completion list is replaced wholesale with matching entries from the relevant parent directory — directories first (with a trailing `/` for navigation), then files, sorted case-fold. `Tab` cycles forward, `Shift+Tab` cycles backward, `Right` (or typing) accepts. Tab-accepting a directory adds the trailing slash so the next keystroke drills into it.
+When active, the completion list is replaced wholesale with matching entries from the relevant parent directory — directories first (with a trailing `/` for navigation), then files, sorted case-fold. `Tab` cycles forward, `Shift+Tab` cycles backward, `Right` (or typing) accepts. Tab-accepting a directory adds the trailing slash so the next keystroke drills into it. When there's only **one** candidate, `Tab` auto-accepts immediately and exits cycling — so a second `Tab` lists the children of the just-accepted directory, matching shell tab-completion behaviour.
 
 The typed value gets a coloured overlay reflecting its filesystem state:
 
