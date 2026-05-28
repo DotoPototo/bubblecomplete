@@ -3,6 +3,8 @@ package bubblecomplete
 import (
 	"reflect"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 // seedInputs covers the parse/validate/complete cases worth running under
@@ -84,7 +86,16 @@ func FuzzValidateCommandInput(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, input string) {
-		_ = validateCommandInput(input, TestCommands)
+		first := validateCommandInput(input, TestCommands)
+		second := validateCommandInput(input, TestCommands)
+		// Determinism: same input must produce equivalent error state.
+		// Catches any hidden state mutation in validation or its helpers.
+		if (first == nil) != (second == nil) {
+			t.Errorf("nondeterministic validation for %q: first=%v second=%v", input, first, second)
+		}
+		if first != nil && second != nil && first.Error() != second.Error() {
+			t.Errorf("validation message drifted between calls for %q:\n  first:  %q\n  second: %q", input, first.Error(), second.Error())
+		}
 	})
 }
 
@@ -93,6 +104,46 @@ func FuzzGetCompletions(f *testing.F) {
 		f.Add(s)
 	}
 	f.Fuzz(func(t *testing.T, input string) {
-		_, _ = getCompletions(input, TestCommands)
+		first, prefix1 := getCompletions(input, TestCommands)
+		second, prefix2 := getCompletions(input, TestCommands)
+		// Determinism: same input, same TestCommands → same result both
+		// times. Catches any hidden state in completion generation.
+		if prefix1 != prefix2 {
+			t.Errorf("match prefix drift for %q: %q vs %q", input, prefix1, prefix2)
+		}
+		if len(first) != len(second) {
+			t.Errorf("completion count drift for %q: %d vs %d", input, len(first), len(second))
+			return
+		}
+		for i := range first {
+			if first[i].getName() != second[i].getName() {
+				t.Errorf("completion[%d] drift for %q: %q vs %q", i, input, first[i].getName(), second[i].getName())
+			}
+		}
+	})
+}
+
+func FuzzRender(f *testing.F) {
+	for _, s := range seedInputs {
+		f.Add(s)
+	}
+	f.Fuzz(func(t *testing.T, input string) {
+		m, err := New(TestCommands, 100)
+		if err != nil {
+			t.Fatal(err)
+		}
+		// Drive the input through Update so the model reaches a realistic
+		// state, not just a SetValue-ed one.
+		for _, r := range input {
+			m, _ = m.Update(tea.KeyPressMsg{Code: r, Text: string(r)})
+		}
+		// Render must be idempotent — a second call on the same model state
+		// must produce byte-identical output. Catches any future regression
+		// that puts side effects back into the render path.
+		first := m.Render()
+		second := m.Render()
+		if first != second {
+			t.Errorf("Render not idempotent for input %q", input)
+		}
 	})
 }

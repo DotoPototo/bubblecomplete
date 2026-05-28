@@ -91,6 +91,36 @@ func TestTokenize(t *testing.T) {
 	}
 }
 
+func TestTokenize_InvalidUTF8PreservesBytes(t *testing.T) {
+	// When tokenize encounters invalid UTF-8, the recorded Raw must still
+	// equal the exact bytes from the original input — not the U+FFFD
+	// replacement that WriteRune would produce. Equivalently, the byte
+	// offsets must round-trip: input[Start:End] == Raw.
+	cases := []struct {
+		name  string
+		input string
+	}{
+		{"single invalid byte", "\x95"},
+		{"invalid byte amongst valid", "abc\xff def"},
+		{"invalid byte adjacent to multi-byte rune", "日\x80本"},
+		{"unclosed quote with invalid byte", `"hello\xff`},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			tokens := tokenize(c.input)
+			for i, tk := range tokens {
+				if tk.Start < 0 || tk.End > len(c.input) || tk.Start > tk.End {
+					t.Errorf("token %d offsets out of range [%d:%d] for input len %d", i, tk.Start, tk.End, len(c.input))
+					continue
+				}
+				if got := c.input[tk.Start:tk.End]; got != tk.Raw {
+					t.Errorf("token %d Raw=%q but input[%d:%d]=%q", i, tk.Raw, tk.Start, tk.End, got)
+				}
+			}
+		})
+	}
+}
+
 func TestTokenize_SplitInputParity(t *testing.T) {
 	// splitInput must produce the same []string it always did, regardless of
 	// the new tokenize internals.

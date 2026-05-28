@@ -217,6 +217,28 @@ func TestError_ClearsAfterSuccessfulOperation(t *testing.T) {
 	}
 }
 
+func TestSetHistoryFilePath_SurfacesNonIsNotExistStatErrors(t *testing.T) {
+	// Create a regular file then point WithHistoryFilePath at a path that
+	// would require traversing it as a directory. os.Stat on that parent
+	// returns ENOTDIR (or the Windows equivalent), which is NOT
+	// os.IsNotExist — the old gate would have silently fallen through.
+	tmp := t.TempDir()
+	blocker := filepath.Join(tmp, "blocker")
+	if err := os.WriteFile(blocker, nil, 0644); err != nil {
+		t.Fatal(err)
+	}
+	// blocker is a file; treating it as a parent dir must fail at Stat.
+	historyPath := filepath.Join(blocker, "subdir", "history.json")
+
+	m, err := New(TestCommands, 100, WithHistoryFilePath(historyPath))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if m.Error() == nil {
+		t.Error("expected Error() to surface the non-IsNotExist stat failure, got nil")
+	}
+}
+
 func TestHistory_AtomicSaveLeavesNoTempFile(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "history.json")
