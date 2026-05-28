@@ -8,8 +8,8 @@ import (
 )
 
 // pathTestCommands constructs a minimal set of test commands tailored to
-// exercising the Phase 3 Update integration without depending on the
-// project-wide TestCommands fixture.
+// exercising the path-completion Update integration without depending on
+// the project-wide TestCommands fixture.
 func pathTestCommands() []*Command {
 	return []*Command{
 		{
@@ -167,9 +167,10 @@ func TestResetModelClearsPathState(t *testing.T) {
 	}
 }
 
-// TestTabAccept_EqualsFormRegressionGuard locks in the v4 regression: the
-// Phase 3 wiring must not drop the "--path=" prefix when Tab-accepting a
-// path completion. This exercises the full Update flow with simulateTyping.
+// TestTabAccept_EqualsFormRegressionGuard locks in the regression where
+// the recompute → completion wiring previously dropped the "--path="
+// prefix when Tab-accepting a path completion. Drives the full Update
+// flow with simulateTyping.
 func TestTabAccept_EqualsFormRegressionGuard(t *testing.T) {
 	dir := t.TempDir()
 	mustWriteFile(t, filepath.Join(dir, "report.txt"))

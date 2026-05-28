@@ -22,4 +22,9 @@
 // The component validates input continuously; the current error is available
 // via [Model.ValidationError] as a [*ValidationError] that exposes a
 // [ValidationErrorKind] for host-side routing without string matching.
+//
+// Opt in to live filesystem completion and per-token validity colouring for
+// [FileArgument] / [DirArgument] / [FileDirArgument] values via
+// [WithFilesystemCompletions]. See the README for the full behaviour and
+// limitations.
 package bubblecomplete
