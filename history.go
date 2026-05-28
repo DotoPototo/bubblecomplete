@@ -63,13 +63,28 @@ func (m *Model) SetHistoryFilePath(path string) {
 	}
 }
 
-// ClearHistory clears the command history. If a history file path is set, the
-// empty history is persisted to it; failures surface via Model.Error.
+// ClearHistory clears the command history and any state derived from it:
+// the textinput's suggestion list and the up/down history-navigation cursor.
+// Without this, arrow-key navigation and inline suggestions would continue to
+// surface stale entries until the next Update tick rebuilt them. If a history
+// file path is set, the empty history is persisted to it; failures surface
+// via Model.Error.
 func (m *Model) ClearHistory() {
 	m.History = []string{}
+	m.syncHistoryDerivedState()
 	if m.historyFilePath != "" {
 		m.err = m.saveHistoryToFile()
 	}
+}
+
+// syncHistoryDerivedState refreshes everything that hangs off m.History:
+// the textinput's suggestion list and the in-flight up/down navigation
+// cursor. Call this after any wholesale replacement of m.History so a
+// stale filteredHistory/historyIndex can't survive across the change.
+func (m *Model) syncHistoryDerivedState() {
+	m.input.SetSuggestions(m.History)
+	m.filteredHistory = nil
+	m.historyIndex = -1
 }
 
 // saveHistoryToFile writes the in-memory history to the configured file
@@ -138,7 +153,7 @@ func (m *Model) loadHistoryFromFile() error {
 	// Tolerate an empty file as empty history.
 	if len(data) == 0 {
 		m.History = nil
-		m.input.SetSuggestions(nil)
+		m.syncHistoryDerivedState()
 		return nil
 	}
 
@@ -157,6 +172,6 @@ func (m *Model) loadHistoryFromFile() error {
 	if m.HistoryLimit <= 0 {
 		m.History = nil
 	}
-	m.input.SetSuggestions(m.History)
+	m.syncHistoryDerivedState()
 	return nil
 }

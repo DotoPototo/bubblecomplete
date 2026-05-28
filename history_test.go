@@ -7,6 +7,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	tea "charm.land/bubbletea/v2"
 )
 
 func TestHistory_TrimKeepsNewest(t *testing.T) {
@@ -28,6 +30,46 @@ func TestHistory_TrimKeepsNewest(t *testing.T) {
 	}
 	if m.History[2] != "git stash list" {
 		t.Errorf("History[2] = %q, want %q (oldest within limit)", m.History[2], "git stash list")
+	}
+}
+
+func TestClearHistory_ResetsDerivedState(t *testing.T) {
+	m, err := New(TestCommands, 100, WithHistoryLimit(10))
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	for _, c := range []string{"git status", "git commit --amend"} {
+		m = simulateTyping(t, m, c)
+		m, _ = pressEnter(t, m)
+	}
+
+	// Prime filteredHistory and historyIndex by walking the history with
+	// the up arrow — this is the state that would go stale after a clear.
+	m = simulateKey(t, m, tea.KeyUp)
+	if len(m.filteredHistory) == 0 || m.historyIndex == -1 {
+		t.Fatalf("setup failed: expected nav state to be active, filteredHistory=%v historyIndex=%d", m.filteredHistory, m.historyIndex)
+	}
+
+	m.ClearHistory()
+
+	if len(m.History) != 0 {
+		t.Errorf("History not cleared: %v", m.History)
+	}
+	if m.filteredHistory != nil {
+		t.Errorf("filteredHistory should be nil after clear, got %v", m.filteredHistory)
+	}
+	if m.historyIndex != -1 {
+		t.Errorf("historyIndex should be -1 after clear, got %d", m.historyIndex)
+	}
+
+	// After clear, Up should be a no-op — there's no history to navigate
+	// to, so the input value should remain whatever the user had typed.
+	m.input.SetValue("fresh input")
+	before := m.input.Value()
+	m = simulateKey(t, m, tea.KeyUp)
+	if m.input.Value() != before {
+		t.Errorf("Up navigated stale history after ClearHistory: value changed from %q to %q", before, m.input.Value())
 	}
 }
 
