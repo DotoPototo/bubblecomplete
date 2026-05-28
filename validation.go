@@ -6,6 +6,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"unicode/utf8"
 )
 
 func (m *Model) validateInput() error {
@@ -63,8 +64,12 @@ func validateCommandInput(input string, commands []*Command) error {
 		if strings.HasPrefix(part, "-") {
 			// -x=VALUE syntax bypasses combined-short-flag parsing because
 			// validateShortFlags treats every char after the dash as its own
-			// flag name and has no notion of an inline value.
-			if strings.Contains(part, "=") {
+			// flag name and has no notion of an inline value. Restrict the
+			// bypass to plausibly-valid flag names — a single non-letter
+			// body like "-1=foo" should fall through so validateShortFlags'
+			// ASCII-letter guard reports it as MalformedFlag instead of an
+			// unhelpful "flag '-1' not found".
+			if eq := strings.Index(part, "="); eq != -1 && plausibleFlagName(part[:eq]) {
 				if err := validateFlag(part, parts, &i, parentCmd, globalFlags); err != nil {
 					return err
 				}
@@ -146,6 +151,26 @@ func validateFlag(part string, parts []string, i *int, parentCmd *Command, globa
 	return validateArgumentValue(arg, argValue)
 }
 
+// plausibleFlagName reports whether name (with its leading dash) could match
+// either a short flag (-letter) or a PowerShell flag (-2-or-more-chars). Used
+// to gate the =VALUE bypass so structurally invalid names like "-1" or "-é"
+// fall through to validateShortFlags' fast-path instead of being reported as
+// UnknownFlag.
+func plausibleFlagName(name string) bool {
+	if !strings.HasPrefix(name, "-") || len(name) < 2 {
+		return false
+	}
+	body := name[1:]
+	// Single-rune body must be an ASCII letter (the short-flag rule).
+	// Multi-rune bodies are plausibly a PsFlag — actual validity is left
+	// to the lookup. Rune-count rather than byte-length so "-é" (one
+	// rune, two bytes) is correctly classified as single-rune.
+	if utf8.RuneCountInString(body) == 1 {
+		return len(body) == 1 && isASCIILetter(body[0])
+	}
+	return true
+}
+
 // looksLikeFlagValue reports whether next can serve as a value for arg. Tokens
 // that don't start with "-" are always accepted. Tokens that do start with "-"
 // are accepted only when they parse as a number for IntArgument / FloatArgument
@@ -172,6 +197,9 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 	if len(combinedFlags) == 0 {
 		return errInvalidArgumentToken(part)
 	}
+	if parentCmd == nil {
+		return errInvalidArgumentToken(part)
+	}
 
 	// Per Flag.Validate, short flags must be ASCII letters. A token whose
 	// body contains anything else (digits, punctuation, multi-byte runes)
@@ -185,15 +213,14 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 		}
 	}
 
+	// Compute the effective flag set once. Validation runs on every
+	// keystroke, so Concat-per-char would allocate redundantly.
+	allFlags := slices.Concat(parentCmd.Flags, globalFlags)
+
 	for j := 0; j < len(combinedFlags); j++ {
 		argName := "-" + string(combinedFlags[j])
 		argValue := ""
 
-		if parentCmd == nil {
-			return errInvalidArgumentToken(part)
-		}
-
-		allFlags := slices.Concat(parentCmd.Flags, globalFlags)
 		arg, err := findFlag(allFlags, argName)
 		if err != nil {
 			return errFlagNotFound(argName)

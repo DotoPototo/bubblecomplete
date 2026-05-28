@@ -385,6 +385,20 @@ func TestValidationError_MalformedFlagSurfaces(t *testing.T) {
 			input:   "git -é",
 			wantMsg: "invalid argument: -é",
 		},
+		{
+			// "-1=foo" used to bypass validateShortFlags' ASCII-letter guard
+			// via the unconditional =VALUE shortcut and surface as
+			// "flag '-1' not found" (UnknownFlag). It's structurally
+			// malformed and should report as such.
+			name:    "digit body with equals value rejected as malformed",
+			input:   "git -1=foo",
+			wantMsg: "invalid argument: -1=foo",
+		},
+		{
+			name:    "multi-byte rune body with equals value rejected as malformed",
+			input:   "git -é=bar",
+			wantMsg: "invalid argument: -é=bar",
+		},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
