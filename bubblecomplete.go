@@ -28,7 +28,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	var cmd tea.Cmd
 	var cmds []tea.Cmd
 
-	// Handle key presses
 	if keyMsg, ok := msg.(tea.KeyPressMsg); ok {
 		switch {
 		case key.Matches(keyMsg, m.keymap.NextCompletion):
@@ -51,11 +50,9 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	}
 	cmds = append(cmds, cmd)
 
-	// Update the text input
 	m.input, cmd = m.input.Update(msg)
 	cmds = append(cmds, cmd)
 
-	// If the input has changed, update the completions and validate the input
 	if m.input.Value() != "" && m.input.Value() != m.lastInput && m.completionHolder == "" && !m.showAll {
 		m.lastInput = m.input.Value()
 		m.recomputePathState()
@@ -63,9 +60,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.validationErr = m.validateInput()
 		m.applyInputValidationStyle()
 	} else if m.input.Value() == "" && m.lastInput != "" {
-		// Input cleared. Always reset lastInput and pathState so a stale
-		// path-completion overlay can't survive a delete-all; clear the
-		// validation style only when there's an error to clear.
+		// Input cleared: reset pathState so a stale overlay can't survive delete-all.
 		m.lastInput = ""
 		m.pathState = pathState{}
 		if m.validationErr != nil {
@@ -74,7 +69,6 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		}
 	}
 
-	// If not loaded, start the blinking cursor
 	if !m.loaded {
 		m.loaded = true
 		cmds = append(cmds, textinput.Blink)
@@ -119,10 +113,8 @@ func (m Model) resetModel() Model {
 	return m
 }
 
-// clearTransientCompletionState wipes the per-keystroke completion-cycling
-// and history-cycling state. Shared by resetModel (full submit reset) and
-// the keyBackspace / keyDefault paths, which need the same wipe without
-// touching the input value or validation state.
+// clearTransientCompletionState wipes per-keystroke completion- and history-
+// cycling state without touching the input value or validation error.
 func (m Model) clearTransientCompletionState() Model {
 	m.completionHolder = ""
 	m.completionIndex = -1
@@ -191,9 +183,8 @@ func (m Model) keyDown() (Model, tea.Cmd) {
 }
 
 func (m Model) keyRight() (Model, tea.Cmd) {
-	// If a tab completion is currently selected, accept it.
-	// Completions and validation are recalculated by Update() since
-	// clearing completionHolder makes its guard condition true.
+	// Clearing completionHolder makes Update's input-changed guard true, so
+	// completions and validation are recalculated against the accepted value.
 	if m.completionIndex >= 0 {
 		m.completionHolder = ""
 		m.completionIndex = -1
@@ -205,7 +196,6 @@ func (m Model) keyRight() (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Accept history inline suggestion
 	if len(m.input.MatchedSuggestions()) == 0 {
 		return m, nil
 	}
@@ -220,26 +210,22 @@ func (m Model) keyRight() (Model, tea.Cmd) {
 func (m Model) keyTab(forward bool) (Model, tea.Cmd) {
 	trimmedInput := strings.TrimSpace(m.input.Value())
 
-	// If the input is empty, show all completions
 	if trimmedInput == "" && !m.showAll {
 		m.showAll = true
 		m.completions, m.matchPrefix = m.getCompletions()
 		return m, nil
 	}
 
-	// If there are no completions, do nothing
 	if len(m.completions) == 0 {
 		return m, nil
 	}
 
-	// If there is only one completion and it matches the input, do nothing
 	if len(m.completions) == 1 {
 		if strings.HasSuffix(trimmedInput, m.completions[0].getName()) {
 			return m, nil
 		}
 	}
 
-	// Cycle and update the completion index
 	if forward {
 		if m.completionIndex < len(m.completions)-1 {
 			m.completionIndex++
@@ -254,34 +240,26 @@ func (m Model) keyTab(forward bool) (Model, tea.Cmd) {
 		}
 	}
 
-	// Save the current input if we haven't already
 	if m.completionHolder == "" && !m.showAll {
 		m.completionHolder = m.input.Value()
 	}
 
-	// If the completion index is -1, reset the input to the completion holder
 	if m.completionIndex == -1 {
 		m.input.SetValue(m.completionHolder)
 		m.completionHolder = ""
-		// Refresh pathState against the restored value. The input-changed
-		// branch later in Update won't help here: the restored value
-		// equals m.lastInput (set before cycling began), so the branch
-		// skips. Without this refresh, pathState would still belong to
-		// the last-cycled preview value — stale offsets, wrong validity,
-		// or (after a cycled file's trailing space made it inactive) no
-		// overlay at all on a path that should now show partial/invalid.
+		// Restored value equals m.lastInput, so Update's input-changed branch
+		// won't refresh pathState. Do it here to avoid stale cycling overlay.
 		m.recomputePathState()
 		return m, nil
 	}
 
-	// If the completion is empty (aka positional arg), don't update the input
+	// Positional-argument completions have no insertion text — they're info-only rows.
 	if m.completions[m.completionIndex].getAutocomplete() == "" {
 		return m, nil
 	}
 
 	pretext := m.completionHolder
 	parts := splitInput(m.completionHolder)
-	// If the pretext doesn't end in a space, add one
 	if !strings.HasSuffix(pretext, " ") && len(parts) > 0 {
 		pretext = strings.Join(parts[:len(parts)-1], " ")
 		if len(parts) > 1 {
@@ -289,34 +267,21 @@ func (m Model) keyTab(forward bool) (Model, tea.Cmd) {
 		}
 	}
 
-	// Update the input with the current completion
 	m.input.SetValue(pretext + m.completions[m.completionIndex].getAutocomplete())
 	m.input.CursorEnd()
 
 	if len(m.completions) == 1 {
-		// Single-match acceptance: treat Tab as a final accept rather than
-		// entering cycling state. Clearing completionHolder here means the
-		// input-changed branch later in this same Update call (after
-		// textinput.Update) will recompute against the new input value —
-		// populating fresh completions and pathState for the just-accepted
-		// text. The next Tab then cycles among those new candidates, which
-		// for a directory match enables the shell-style drill-down: Tab
-		// on "cd Do" with a unique "Documents/" candidate accepts it AND
-		// repopulates with Documents/'s children, so the second Tab
-		// descends one level.
+		// Single-match: final accept (not cycling). Clearing completionHolder
+		// lets Update's input-changed branch recompute against the new value,
+		// enabling shell-style drill-down on directory matches (second Tab
+		// descends into the just-accepted dir).
 		m.completionHolder = ""
 		m.completionIndex = -1
 		m.showAll = false
 	} else {
-		// Multi-match cycling: completionHolder stays set so the user can
-		// continue cycling or revert to the original via Shift+Tab past
-		// the start. The input-changed branch is therefore skipped on the
-		// next Update tick. Refresh pathState here so the render overlay
-		// reflects the *cycled* value's validity — without this, the
-		// frozen offsets and validity would mis-style the preview (the
-		// old cycling-bypass behaviour in renderedInput). m.completions
-		// is intentionally NOT recomputed: the cycling list is the
-		// candidates we entered cycling with.
+		// Multi-match cycling: refresh pathState so the overlay reflects the
+		// cycled preview's validity. m.completions is deliberately NOT
+		// recomputed — we cycle the list we entered with.
 		m.recomputePathState()
 	}
 	return m, nil
@@ -328,12 +293,10 @@ func (m Model) keyEnter() (Model, tea.Cmd) {
 		command = strings.TrimSpace(m.input.Value())
 	}
 
-	// Re-validate against the current input to avoid stale errors from
-	// before tab completion changed the value.
+	// Re-validate: tab completion may have changed the value since the last tick.
 	m.validationErr = m.validateInput()
 	validationErr := m.validationErr
 
-	// HistoryLimit <= 0 disables history entirely.
 	if m.HistoryLimit > 0 && command != "" && (len(m.History) == 0 || m.History[0] != command) {
 		m.History = append([]string{command}, m.History...)
 		if len(m.History) > m.HistoryLimit {
@@ -341,9 +304,7 @@ func (m Model) keyEnter() (Model, tea.Cmd) {
 		}
 	}
 	m = m.resetModel()
-	// When history is disabled, skip the save entirely — otherwise a
-	// configured history file would get rewritten to {"history":null} on
-	// every Enter. Clear any prior error since no operation was attempted.
+	// History disabled: skip save (would rewrite file to {"history":null}).
 	if m.HistoryLimit > 0 {
 		m.err = m.saveHistoryToFile()
 	} else {

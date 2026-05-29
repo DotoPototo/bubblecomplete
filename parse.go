@@ -8,23 +8,16 @@ import (
 // token is the unit produced by tokenize. It carries enough metadata for
 // completion, validation, and quote-error reporting to share a single parse.
 type token struct {
-	// Raw is the token text as typed, including surrounding quote characters.
-	// Sliced directly from the input so invalid UTF-8 bytes are preserved.
+	// Sliced from input verbatim so invalid UTF-8 bytes survive.
 	Raw string
-	// Unquoted is the token text with quote characters removed. Note that
-	// invalid UTF-8 sequences in the input are normalized to U+FFFD here
-	// (unlike Raw which preserves bytes); use Raw when byte-fidelity matters.
-	Unquoted string
-	// Start is the byte offset in the input where the token begins.
-	Start int
-	// End is the byte offset in the input immediately after the token ends.
-	End int
-	// Quoted is true if the token opened with a quote character.
-	Quoted bool
-	// Quote is the quote character (' or ") if Quoted is true.
+	// Quote characters stripped. Invalid UTF-8 in input becomes U+FFFD here
+	// (unlike Raw); use Raw when byte-fidelity matters.
+	Unquoted   string
+	Start, End int
+	Quoted     bool
+	// Quote is the opener (' or "), valid only when Quoted is true.
 	Quote rune
-	// Closed is true if a quoted token's closing quote was seen.
-	// Always true for unquoted tokens.
+	// Closed is true if the opening quote was matched, or always for unquoted tokens.
 	Closed bool
 }
 

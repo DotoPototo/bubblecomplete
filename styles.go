@@ -5,8 +5,6 @@ import (
 	"charm.land/lipgloss/v2/compat"
 )
 
-// Colors — Charm-inspired palette with semantic naming.
-// Pink accent, proper text hierarchy, subtle alternating rows.
 var (
 	accentColor          = compat.AdaptiveColor{Light: lipgloss.Color("#D6116B"), Dark: lipgloss.Color("#F5639A")}
 	accentBgColor        = compat.AdaptiveColor{Light: lipgloss.Color("#FDE8F0"), Dark: lipgloss.Color("#3B1D2E")}

@@ -38,9 +38,9 @@ func validateCommandInput(input string, commands []*Command) error {
 				if parentCmd == nil {
 					return errInvalidCommand(part)
 				}
-				// If no subcommand is found, stop looking for commands
+				// Reprocess current part as flag/positional under the parent.
 				isCommand = false
-				i-- // Reprocess the current part as a flag or positional argument
+				i--
 				continue
 			}
 			parentCmd = cmd
@@ -106,7 +106,6 @@ func validateCommandInput(input string, commands []*Command) error {
 		return errUnexpectedArgument(part)
 	}
 
-	// Check if all required positional arguments are present
 	expectedPositionalArgs := 0
 	for _, cmd := range parentCmd.PositionalArguments {
 		if cmd.Required {

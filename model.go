@@ -30,7 +30,7 @@ type Model struct {
 
 	// ---- Commands ----
 
-	// The commands available
+	// Commands is the command tree the user can complete against and submit.
 	Commands      []*Command
 	validationErr error
 
@@ -44,7 +44,7 @@ type Model struct {
 
 	// ---- History ----
 
-	// Slice that holds the history of commands
+	// History is the in-memory command history, most recent first.
 	History         []string
 	filteredHistory []string
 	historyIndex    int
@@ -58,31 +58,31 @@ type Model struct {
 
 	// ---- Options ----
 
-	// The maximum number of history items to store
+	// HistoryLimit caps how many commands are retained. ≤ 0 disables history.
 	HistoryLimit int
-	// Whether to indent completions to match the input
+	// IndentCompletions aligns the completion list with the active token.
 	IndentCompletions bool
-	// Whether to trim the input on enter
+	// Autotrim strips surrounding whitespace from the submitted command.
 	Autotrim bool
-	// The base offset from the left, applied to the completions
+	// CompletionsOffset is an additional left offset added to the completion list.
 	CompletionsOffset int
-	// Whether to show different border styles to indicate scrolling
+	// ShowBorderScroll tints the top/bottom border when more rows exist off-screen.
 	ShowBorderScroll bool
-	// Whether to show the horizontal scrollbar to indicate scrolling
+	// ShowScrollbar renders a vertical scrollbar on the completion list.
 	ShowScrollbar bool
-	// The position of the completions relative to the input
+	// CompletionsPosition places the list above or below the input.
 	CompletionsPosition Position
-	// The number of rows to show in the completions
+	// CompletionRows is the visible row count before scrolling.
 	CompletionRows int
-	// Whether to show type indicator icons
+	// ShowIcons renders a type-indicator glyph on each row.
 	ShowIcons bool
-	// Whether to render the description column next to each completion name
+	// ShowDescriptions renders the description column next to each name.
 	ShowDescriptions bool
-	// The icon for command completions
+	// CommandIcon is the glyph used for command rows when ShowIcons is true.
 	CommandIcon string
-	// The icon for argument completions
+	// ArgumentIcon is the glyph used for positional / filesystem rows when ShowIcons is true.
 	ArgumentIcon string
-	// The icon for flag completions
+	// FlagIcon is the glyph used for flag rows when ShowIcons is true.
 	FlagIcon string
 
 	// ---- Filesystem completion (opt-in) ----
@@ -541,7 +541,6 @@ func (f *Flag) Validate() error {
 		}
 	}
 
-	// Long flag validation
 	if f.LongFlag != "" {
 		if !strings.HasPrefix(f.LongFlag, "--") {
 			return errors.New("long flags must start with two dashes")
@@ -555,7 +554,6 @@ func (f *Flag) Validate() error {
 		}
 	}
 
-	// PowerShell flag validation
 	if f.PsFlag != "" {
 		if !strings.HasPrefix(f.PsFlag, "-") {
 			return errors.New("powershell flags must start with a dash")

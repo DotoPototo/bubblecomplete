@@ -75,24 +75,20 @@ func uniqueCompletions(completions *[]completion) {
 	*completions = list
 }
 
-// getCompletions gets completions for the input based on the available commands
 func getCompletions(input string, commands []*Command) ([]completion, string) {
 	var completions []completion
 
-	// If the input is empty, return nothing
 	if strings.TrimSpace(input) == "" {
 		return []completion{}, ""
 	}
 
-	// Split the input into parts so we can handle each part separately
 	parts := splitInput(input)
 	if len(parts) == 0 {
 		return []completion{}, ""
 	}
 
-	// If there is only one part and the input doesn't end with a space, we're still typing the first command
+	// Still typing the first command word.
 	if len(parts) == 1 && !strings.HasSuffix(input, " ") {
-		// Show all commands that start with the input
 		for _, c := range commands {
 			if strings.HasPrefix(c.Command, parts[0]) {
 				completions = append(completions, c)
@@ -101,15 +97,10 @@ func getCompletions(input string, commands []*Command) ([]completion, string) {
 		return completions, parts[0]
 	}
 
-	// Otherwise we have at least one command entered so find the final valid command entered
 	finalCommand, commandDepth, globalFlags := walkToFinalCommand(input, parts, commands)
-
-	// If we haven't found any command, it must be invalid input so return nothing
 	if finalCommand == nil {
 		return []completion{}, ""
 	}
-
-	// From here it's if - return statements
 
 	argParts := parts[commandDepth:]
 	posArgs, flagArgs := splitPositionArgsAndFlags(argParts, finalCommand, globalFlags)
@@ -119,19 +110,16 @@ func getCompletions(input string, commands []*Command) ([]completion, string) {
 		matchPrefix = argParts[len(argParts)-1]
 	}
 
-	// If the final command has subcommands
 	if len(finalCommand.SubCommands) > 0 {
 		completions = handleSubCommandCompletions(finalCommand, parts, commandDepth, input, flagArgs, globalFlags)
 		return completions, matchPrefix
 	}
 
-	// If the final command has positional arguments
 	if len(finalCommand.PositionalArguments) > 0 {
 		completions = handlePositionalArgumentCompletions(finalCommand, posArgs, flagArgs, input, argParts, globalFlags)
 		return completions, matchPrefix
 	}
 
-	// Otherwise show only the flags
 	flagCompletions, _ := getFlagCompletions(input, finalCommand, flagArgs, globalFlags)
 	completions = append(completions, flagCompletions...)
 	return completions, matchPrefix
@@ -147,12 +135,12 @@ func handleSubCommandCompletions(
 ) []completion {
 	var completions []completion
 
-	// Show subcommands unless there's more parts than expected (i.e. invalid input or flags for parent command)
+	// Hide subcommands once parts have moved past the subcommand position
+	// (extra tokens mean the user is typing flags / args for the parent).
 	if len(parts) <= depth || (len(parts) == depth+1 && !strings.HasSuffix(input, " ")) {
 		completions = append(completions, getSubCommandCompletions(input, cmd, parts)...)
 	}
 
-	// Append any flag completions
 	flagCompletions, solo := getFlagCompletions(input, cmd, flagArgs, globalFlags)
 	if solo {
 		return flagCompletions
@@ -170,7 +158,6 @@ func handlePositionalArgumentCompletions(
 ) []completion {
 	var completions []completion
 
-	// Show the flag arguments if there are no positional arguments entered
 	if len(posArgs) == 0 {
 		flagCompletions, solo := getFlagCompletions(input, cmd, flagArgs, globalFlags)
 		if solo {
@@ -200,11 +187,9 @@ func handlePositionalArgumentCompletions(
 func getSubCommandCompletions(input string, finalCommand *Command, parts []string) []completion {
 	completions := []completion{}
 
-	// If we've started typing, show only subcommands that start with the input
 	if !strings.HasSuffix(input, " ") {
 		for _, command := range finalCommand.SubCommands {
 			if strings.HasPrefix(command.Command, parts[len(parts)-1]) {
-				// Filter out commands that have already been entered
 				if !inputContainsCompletedToken(input, command.Command) {
 					completions = append(completions, command)
 				}
@@ -213,9 +198,7 @@ func getSubCommandCompletions(input string, finalCommand *Command, parts []strin
 		return completions
 	}
 
-	// Otherwise show all subcommands
 	for _, command := range finalCommand.SubCommands {
-		// Filter out commands that have already been entered
 		if !inputContainsCompletedToken(input, command.Command) {
 			completions = append(completions, command)
 		}
@@ -227,17 +210,14 @@ func getSubCommandCompletions(input string, finalCommand *Command, parts []strin
 func getPositionalArgumentCompletions(input string, finalCommand *Command, posArgParts []string) []completion {
 	completions := []completion{}
 
-	// If we haven't entered any positional arguments yet, show the first one
 	if len(posArgParts) == 0 {
 		return []completion{finalCommand.PositionalArguments[0]}
 	}
 
-	// If we're entering a positional argument value, show only the positional argument for that value
 	if yes, arg := isEnteringPosArgValue(input, finalCommand, posArgParts); yes {
 		return []completion{arg}
 	}
 
-	// Otherwise show the next positional argument if there is one
 	if len(posArgParts) < len(finalCommand.PositionalArguments) {
 		return []completion{finalCommand.PositionalArguments[len(posArgParts)]}
 	}
@@ -253,10 +233,9 @@ func isEnteringPosArgValue(input string, finalCommand *Command, posArgParts []st
 	lastArg := posArgParts[len(posArgParts)-1]
 	positionalArgument := finalCommand.PositionalArguments[len(posArgParts)-1]
 
-	// Does the last arg start with a quote?
+	// Unclosed quoted value → still entering.
 	if strings.HasPrefix(lastArg, "\"") || strings.HasPrefix(lastArg, "'") {
 		quote := lastArg[0:1]
-		// If the last arg doesn't end with a quote, we're entering a value
 		if !strings.HasSuffix(lastArg, quote) {
 			return true, positionalArgument
 		}
@@ -269,9 +248,9 @@ func isEnteringPosArgValue(input string, finalCommand *Command, posArgParts []st
 	return false, nil
 }
 
-// getFlagCompletions gets completions for flags based on the input
-//
-// Returns a list of completions and a boolean indicating if this should be the only completion shown or not
+// getFlagCompletions returns flag completions for the current input. The
+// second return is true when the result should replace the completion list
+// entirely (e.g. when the user is mid-value for a known flag).
 func getFlagCompletions(
 	input string,
 	finalCommand *Command,
@@ -282,7 +261,6 @@ func getFlagCompletions(
 
 	allFlags := slices.Concat(finalCommand.Flags, globalFlags)
 
-	// If we haven't entered any flags yet, show all flags
 	if len(flagArgParts) == 0 {
 		for _, a := range allFlags {
 			completions = append(completions, a)
@@ -290,17 +268,14 @@ func getFlagCompletions(
 		return completions, false
 	}
 
-	// If we're entering a flag value, show only the flag for that value
 	if yes, flag := isEnteringFlagValue(input, finalCommand, flagArgParts, globalFlags); yes {
 		return []completion{flag}, true
 	}
 
-	// If we need to enter a flag value, show only the flag for that value
 	if yes, flag := needToEnterFlagValue(finalCommand, flagArgParts, globalFlags); yes {
 		return []completion{flag}, true
 	}
 
-	// Otherwise if we end with a space, show all flags not yet entered
 	if strings.HasSuffix(input, " ") {
 		for _, flag := range allFlags {
 			if !containsFlag(input, flag) {
@@ -310,7 +285,6 @@ func getFlagCompletions(
 		return completions, false
 	}
 
-	// Otherwise finally, show completions based on the argument being entered
 	finalPart := flagArgParts[len(flagArgParts)-1]
 	completions = append(completions, filterFlagsByPrefix(input, finalPart, allFlags)...)
 	return completions, false
@@ -373,7 +347,7 @@ func isEnteringFlagValue(
 		}
 	}
 
-	// Check if we're entering a flag value with a space between the flag and value
+	// Space-separated flag value (e.g. `--name foo`).
 	if len(flagArgParts) >= 2 {
 		lastFlag := flagArgParts[len(flagArgParts)-2]
 		lastValue := lastArg
@@ -381,7 +355,7 @@ func isEnteringFlagValue(
 		if strings.HasPrefix(lastFlag, "-") && !inputContainsUnquotedTokenBeforeLast(input, lastValue) {
 			flagValueToCompare := lastFlag
 			for _, flag := range allFlags {
-				// If the last flag is a short flag, only compare the last character
+				// Combined short flag: the value belongs to the last char.
 				if flag.PsFlag == "" && !strings.HasPrefix(lastFlag, "--") && len(lastFlag) > 2 {
 					flagValueToCompare = "-" + lastFlag[len(lastFlag)-1:]
 				}
@@ -395,13 +369,12 @@ func isEnteringFlagValue(
 		}
 	}
 
-	// If we're entering a flag value with an equals sign between the flag and value
+	// Equals-form flag value (e.g. `--name=foo`).
 	if strings.Contains(lastArg, "=") {
 		// Skip when the token is a fully-closed quoted value already followed
 		// by a space — that means we've moved past it, not into it.
 		if !stringEndsInQuoteWithoutEquals(lastArg) || !strings.HasSuffix(input, " ") {
 			for _, flag := range allFlags {
-				// If the flag isn't a PowerShell flag, ensure it's a long flag
 				if flag.PsFlag == "" && !strings.HasPrefix(lastArg, "--") {
 					continue
 				}
@@ -420,7 +393,7 @@ func needToEnterFlagValue(finalCommand *Command, flagArgParts []string, globalFl
 	allFlags := slices.Concat(finalCommand.Flags, globalFlags)
 
 	for _, flag := range allFlags {
-		// If the last argument is a combined short flag, only check for the last character flag
+		// Combined short flag: the value belongs to the last char.
 		flagToCompare := lastArgument
 		if flag.PsFlag == "" && !strings.HasPrefix(lastArgument, "--") && len(lastArgument) > 2 {
 			flagToCompare = "-" + lastArgument[len(lastArgument)-1:]
@@ -451,45 +424,36 @@ func stringEndsInQuoteWithoutEquals(s string) bool {
 }
 
 func splitPositionArgsAndFlags(argParts []string, command *Command, globalFlags []*Flag) ([]string, []string) {
-	// For a given input, split the input into flags and their values and positional arguments
-
-	// If the input is empty, return nothing
 	if len(argParts) == 0 {
 		return []string{}, []string{}
 	}
 
 	effectiveFlags := slices.Concat(command.Flags, globalFlags)
 
-	// If there are no flags, return all positional arguments
 	if len(effectiveFlags) == 0 {
 		return argParts, []string{}
 	}
-
-	// If there are no positional arguments, return all flags
 	if len(command.PositionalArguments) == 0 {
 		return []string{}, argParts
 	}
 
-	// If there are both positional and flags
 	var positionalArgs []string
 	var flags []string
 	for i := 0; i < len(argParts); i++ {
-		// If the argument is a flag, add it and its value to the flags
 		if strings.HasPrefix(argParts[i], "-") {
 			matched := findMatchingFlag(argParts[i], effectiveFlags)
 			if matched != nil {
 				flags = append(flags, argParts[i])
-				// If the argument is a boolean, don't check for a value
+				// Bool flags don't consume the next token.
 				if matched.Type != BoolArgument && i+1 < len(argParts) {
 					flags = append(flags, argParts[i+1])
 					i++
 				}
 			} else {
-				// Unknown flag — still record it as an entered flag for completion filtering
+				// Unknown flags are still recorded so completion can filter them out.
 				flags = append(flags, argParts[i])
 			}
 		} else {
-			// If the argument is not a flag, add it to the positional arguments
 			positionalArgs = append(positionalArgs, argParts[i])
 		}
 	}
@@ -670,12 +634,10 @@ func containsLongFlag(command string, flag string) bool {
 }
 
 func containsPowerShellFlag(command string, flag string) bool {
-	// If the powershell flag is a short flag, check for the short flag pattern
+	// Single-letter PsFlag bodies share the short-flag detection path.
 	if len(flag) == 2 && flag[0] == '-' {
 		return containsShortFlag(command, flag)
 	}
-
-	// Otherwise check for the long flag pattern
 	return containsLongFlag(command, flag)
 }
 
