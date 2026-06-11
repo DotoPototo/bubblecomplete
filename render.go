@@ -97,16 +97,15 @@ type completionRow struct {
 
 func kindOf(c completion) completionKind {
 	switch c.(type) {
-	case *Command, Command:
+	case *Command:
 		return commandKind
-	case *PositionalArgument, PositionalArgument:
+	case *PositionalArgument:
 		return argumentKind
-	case *Flag, Flag:
+	case *Flag:
 		return flagKind
-	case pathCompletion, *pathCompletion:
+	case pathCompletion:
 		// Path candidates are filesystem entries surfaced for an argument
-		// value — map to argumentKind so ShowIcons uses ArgumentIcon, not
-		// the fallback CommandIcon.
+		// value — map to argumentKind so ShowIcons uses ArgumentIcon.
 		return argumentKind
 	}
 	return commandKind

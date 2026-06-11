@@ -633,11 +633,10 @@ func containsLongFlag(command string, flag string) bool {
 	return false
 }
 
+// containsPowerShellFlag reports whether command contains a token referencing
+// the given PsFlag. Flag.Validate guarantees PsFlag bodies are at least two
+// runes, so detection reuses the long-flag exact/equals-form matcher.
 func containsPowerShellFlag(command string, flag string) bool {
-	// Single-letter PsFlag bodies share the short-flag detection path.
-	if len(flag) == 2 && flag[0] == '-' {
-		return containsShortFlag(command, flag)
-	}
 	return containsLongFlag(command, flag)
 }
 

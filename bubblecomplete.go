@@ -77,8 +77,8 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	return m, tea.Batch(cmds...)
 }
 
-// ShowingCompletions returns true if the completions are currently visible
-func (m *Model) ShowingCompletions() bool {
+// ShowingCompletions returns true if the completions are currently visible.
+func (m Model) ShowingCompletions() bool {
 	return len(m.completions) > 0 && m.historyIndex == -1 && (m.input.Value() != "" || m.showAll)
 }
 
