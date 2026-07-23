@@ -67,7 +67,7 @@ type dirCacheEntry struct {
 	foldNames []string
 	kinds     []entryKind
 
-	// fetchedAt is when the entry was populated; used for TTL eviction.
+	// fetchedAt drives TTL eviction.
 	fetchedAt time.Time
 
 	// err is the ReadDir error, if any. Sticky for the TTL window so
@@ -139,7 +139,6 @@ func (c *dirCache) read(parent string) *dirCacheEntry {
 			c.touchLocked(parent)
 			return e
 		}
-		// stale — fall through to refresh
 	}
 
 	entry := fetchDir(parent)
@@ -149,11 +148,9 @@ func (c *dirCache) read(parent string) *dirCacheEntry {
 	return entry
 }
 
-// fetchDir performs an [os.ReadDir] and packages the result into a
-// [dirCacheEntry]. Errors are captured into entry.err; callers check it.
-//
-// Note: os.ReadDir is unbounded — it reads every entry in the directory and
-// returns them sorted. The TTL cache amortises the cost across keystrokes.
+// fetchDir packages an [os.ReadDir] result into a [dirCacheEntry], capturing
+// any error in entry.err. os.ReadDir is unbounded — it reads every entry —
+// and the TTL cache amortises that cost across keystrokes.
 func fetchDir(parent string) *dirCacheEntry {
 	e := &dirCacheEntry{fetchedAt: time.Now()}
 	entries, err := os.ReadDir(parent)

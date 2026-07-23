@@ -12,11 +12,8 @@ func (m Model) getCompletions() ([]completion, string) {
 		return []completion{}, ""
 	}
 
-	// Modal path-completion context: when editing a file/dir argument value
-	// and we have candidates, those replace the entire completion list.
-	// Command and flag rows are intentionally hidden in this mode — the
-	// user is doing filesystem navigation, not flag exploration. To
-	// re-surface them, the user moves the cursor out of the value position.
+	// Path candidates replace the entire list — command and flag rows are
+	// intentionally hidden while the user is doing filesystem navigation.
 	if m.pathState.active && len(m.pathState.candidates) > 0 {
 		out := make([]completion, len(m.pathState.candidates))
 		for i := range m.pathState.candidates {
@@ -48,9 +45,6 @@ func sortCompletions(completions *[]completion) {
 		nameA := a.getName()
 		nameB := b.getName()
 
-		// Decode the first rune properly — indexing [0] would misclassify
-		// names starting with a multi-byte rune (the lead byte casts to an
-		// unrelated code point).
 		firstA, _ := utf8.DecodeRuneInString(nameA)
 		firstB, _ := utf8.DecodeRuneInString(nameB)
 		isPunctA := unicode.IsPunct(firstA)
@@ -93,7 +87,6 @@ func getCompletions(input string, commands []*Command) ([]completion, string) {
 		return []completion{}, ""
 	}
 
-	// Still typing the first command word.
 	if len(parts) == 1 && !strings.HasSuffix(input, " ") {
 		for _, c := range commands {
 			if strings.HasPrefix(c.Command, parts[0]) {
@@ -172,10 +165,6 @@ func handlePositionalArgumentCompletions(
 		completions = append(completions, flagCompletions...)
 	}
 
-	// Handle positional argument completions. Both flags read off argParts'
-	// last token, which is only safe when argParts is non-empty — short-
-	// circuiting on len(argParts) > 0 keeps this panic-free for inputs that
-	// end immediately after the command word (e.g. "git ").
 	startedTyping := len(posArgs) > 0 || strings.HasSuffix(input, " ")
 	posArgsLeft := len(posArgs) < len(cmd.PositionalArguments)
 	posArgsFull := len(posArgs) == len(cmd.PositionalArguments)
@@ -239,7 +228,6 @@ func isEnteringPosArgValue(input string, finalCommand *Command, posArgParts []st
 	lastArg := posArgParts[len(posArgParts)-1]
 	positionalArgument := finalCommand.PositionalArguments[len(posArgParts)-1]
 
-	// Unclosed quoted value → still entering.
 	if strings.HasPrefix(lastArg, "\"") || strings.HasPrefix(lastArg, "'") {
 		quote := lastArg[0:1]
 		if !strings.HasSuffix(lastArg, quote) {
@@ -303,8 +291,6 @@ func filterFlagsByPrefix(input, prefix string, allFlags []*Flag) []completion {
 	var out []completion
 	for _, flag := range allFlags {
 		if flag.PsFlag != "" && strings.HasPrefix(flag.PsFlag, prefix) {
-			// PsFlag-style: keep if not yet entered, or if the user is
-			// finishing the exact flag.
 			if !containsFlag(input, flag) || prefix == flag.PsFlag {
 				out = append(out, flag)
 			}
@@ -339,13 +325,9 @@ func isEnteringFlagValue(
 	lastArg := flagArgParts[len(flagArgParts)-1]
 	allFlags := slices.Concat(finalCommand.Flags, globalFlags)
 
-	// If the input ends with a space AND the last token is closed, the user
-	// has committed past the value — they're no longer entering it. This
-	// applies uniformly to all forms: `-m 'msg' `, `-m "msg" `, `-m hello `,
-	// `--message=value `, etc. The `Closed` field on the tokenizer's last
-	// token correctly distinguishes a fully-closed quoted value from an
-	// unclosed one whose body happens to end in a space (e.g. `-m "hi `,
-	// which is still entering the -m value because the quote never closed).
+	// Trailing space + closed last token = committed past the value. Closed
+	// distinguishes `-m "msg" ` (done) from `-m "hi ` (quote never closed,
+	// still entering).
 	if strings.HasSuffix(input, " ") {
 		tokens := tokenize(input)
 		if len(tokens) > 0 && tokens[len(tokens)-1].Closed {
@@ -405,9 +387,6 @@ func needToEnterFlagValue(finalCommand *Command, flagArgParts []string, globalFl
 			flagToCompare = "-" + lastArgument[len(lastArgument)-1:]
 		}
 
-		// Only treat the last token as a flag that's waiting on a value if
-		// it actually references this flag AND hasn't already taken a value
-		// via long-form or PsFlag "=value" syntax.
 		hasFlag := containsFlag(flagToCompare, flag)
 		hasLongEquals := strings.Contains(lastArgument, flag.LongFlag+"=")
 		hasPsEquals := strings.Contains(lastArgument, flag.PsFlag+"=")
@@ -467,22 +446,12 @@ func splitPositionArgsAndFlags(argParts []string, command *Command, globalFlags 
 	return positionalArgs, flags
 }
 
-// findMatchingFlag returns the effective flag whose form matches the given
-// argument token, or nil if none does. Single-pass classification avoids the
-// duplicate-append bug the old inner loop had.
-//
-// For combined short flags like "-fm", the LAST character determines the
-// matching flag — validation enforces that only the last char in a combined
-// group may be non-bool (and therefore value-taking), so attributing the
-// token to that flag is consistent with how the command would actually parse.
-//
-// PsFlag and LongFlag matches (exact-token OR equals-form, since
-// containsLongFlag / containsPowerShellFlag also recognise "--flag=value"
-// and "-Path=value") are checked BEFORE the combined-short-flag heuristic.
-// A multi-letter PsFlag like "-Path" is indistinguishable token-shape-wise
-// from a combined short flag "-Path" (the body is all ASCII letters,
-// length > 1), so the combined-short-flag branch must not preempt a real
-// PsFlag match.
+// findMatchingFlag returns the effective flag matching the given token, or
+// nil. For combined short flags like "-fm" the LAST character determines the
+// match — validation guarantees only the last char in a group may take a
+// value. PsFlag/LongFlag matches must be checked BEFORE the combined-short-
+// flag heuristic: a multi-letter PsFlag like "-Path" is token-shape-identical
+// to a combined short flag and must not be preempted by it.
 func findMatchingFlag(arg string, effectiveFlags []*Flag) *Flag {
 	for _, f := range effectiveFlags {
 		if f.PsFlag != "" && containsPowerShellFlag(arg, f.PsFlag) {
@@ -516,15 +485,11 @@ func isCombinedShortFlag(arg string) bool {
 	return ok && len(body) > 1
 }
 
-// walkToFinalCommand walks the parsed input parts down the command tree and
-// returns the deepest matched command, how many parts were consumed by command
-// words, and the persistent flags accumulated from ancestor commands. Returns
-// finalCmd == nil when no command word matched.
-//
-// Persistent flags propagate to every subcommand. Downstream completion paths
-// dedupe via [containsFlag], so we must not pre-filter here — value-detection
-// needs the persistent flag in scope even when the user is actively entering
-// it.
+// walkToFinalCommand returns the deepest matched command, how many parts were
+// consumed by command words, and the persistent flags accumulated from
+// ancestors (nil finalCmd when nothing matched). Persistent flags are NOT
+// pre-filtered here — value-detection needs them in scope even while the user
+// is actively entering one; downstream paths dedupe via [containsFlag].
 func walkToFinalCommand(input string, parts []string, commands []*Command) (finalCmd *Command, commandDepth int, globalFlags []*Flag) {
 	for _, enteredInput := range parts {
 		for _, c := range commands {
@@ -561,10 +526,8 @@ func inputContainsCompletedToken(input, s string) bool {
 	return false
 }
 
-// inputContainsUnquotedTokenBeforeLast returns true if input contains an
-// unquoted token equal to s at any position before the final token. Used to
-// distinguish a value being typed (the final token) from an earlier
-// occurrence of the same value elsewhere in the input.
+// inputContainsUnquotedTokenBeforeLast distinguishes a value being typed (the
+// final token) from an earlier occurrence of the same value in the input.
 func inputContainsUnquotedTokenBeforeLast(input, s string) bool {
 	tokens := tokenize(input)
 	for i := range len(tokens) - 1 {
@@ -575,9 +538,8 @@ func inputContainsUnquotedTokenBeforeLast(input, s string) bool {
 	return false
 }
 
-// containsFlag returns true if the input contains an unquoted reference to the
-// given flag. Token-aware: quoted segments do not contribute matches and
-// end-of-input flags are detected correctly.
+// containsFlag reports whether the input references flag in any form,
+// ignoring quoted segments.
 func containsFlag(command string, flag *Flag) bool {
 	if flag.PsFlag != "" && containsPowerShellFlag(command, flag.PsFlag) {
 		return true
@@ -591,10 +553,9 @@ func containsFlag(command string, flag *Flag) bool {
 	return false
 }
 
-// containsShortFlag returns true if any unquoted short-flag-shaped token in
-// command contains the single-character body of flag. Combined short flags
-// like "-xyz" match each of their characters; tokens whose body is not purely
-// ASCII letters are ignored (matches the historical detection rule).
+// containsShortFlag reports whether any unquoted short-flag token contains
+// flag's single character. Combined flags ("-xyz") match each character;
+// non-ASCII-letter bodies are ignored.
 func containsShortFlag(command string, flag string) bool {
 	if len(flag) > 0 && flag[0] == '-' {
 		flag = flag[1:]
@@ -646,9 +607,6 @@ func containsPowerShellFlag(command string, flag string) bool {
 	return containsLongFlag(command, flag)
 }
 
-// shortFlagBody returns the body of a short-flag-shaped token (e.g., "xyz" for
-// "-xyz") if the token is a candidate for short-flag detection. Tokens that
-// start with "--" or have a non-alpha body are rejected.
 func shortFlagBody(text string) (string, bool) {
 	if !strings.HasPrefix(text, "-") || strings.HasPrefix(text, "--") || len(text) < 2 {
 		return "", false

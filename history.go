@@ -10,11 +10,9 @@ import (
 	"slices"
 )
 
-// maxHistoryFileSize caps how many bytes loadHistoryFromFile will read off
-// disk. A realistic history with HistoryLimit=100 and 1KB entries fits in
-// ~100KB; 10MB is many orders of magnitude beyond that. The cap protects
-// hosts from a tampered or accidentally enormous history file pinning the
-// process's memory on startup.
+// maxHistoryFileSize caps loadHistoryFromFile reads, protecting hosts from a
+// tampered or accidentally enormous history file pinning memory on startup.
+// 10 MiB is orders of magnitude beyond any realistic history.
 const maxHistoryFileSize = 10 << 20
 
 type historyFileJSON struct {
@@ -43,8 +41,7 @@ func (m *Model) SetHistoryFilePath(path string) {
 
 	dir := filepath.Dir(cleanPath)
 	if _, err := os.Stat(dir); err != nil {
-		// Surface any stat error (missing dir, permission denied, etc.)
-		// immediately rather than letting later file ops fail confusingly.
+		// Surface stat errors now rather than letting later file ops fail confusingly.
 		m.err = err
 		return
 	}
@@ -63,12 +60,9 @@ func (m *Model) SetHistoryFilePath(path string) {
 	}
 }
 
-// ClearHistory clears the command history and any state derived from it:
-// the textinput's suggestion list and the up/down history-navigation cursor.
-// Without this, arrow-key navigation and inline suggestions would continue to
-// surface stale entries until the next Update tick rebuilt them. If a history
-// file path is set, the empty history is persisted to it; failures surface
-// via Model.Error.
+// ClearHistory clears the command history and state derived from it (the
+// suggestion list and the history-navigation cursor). If a history file path
+// is set, the empty history is persisted; failures surface via Model.Error.
 func (m *Model) ClearHistory() {
 	m.History = []string{}
 	m.syncHistoryDerivedState()
@@ -77,10 +71,9 @@ func (m *Model) ClearHistory() {
 	}
 }
 
-// syncHistoryDerivedState refreshes everything that hangs off m.History:
-// the textinput's suggestion list and the in-flight up/down navigation
-// cursor. Call this after any wholesale replacement of m.History so a
-// stale filteredHistory/historyIndex can't survive across the change.
+// syncHistoryDerivedState refreshes everything that hangs off m.History.
+// Call after any wholesale replacement so a stale filteredHistory or
+// historyIndex can't survive the change.
 func (m *Model) syncHistoryDerivedState() {
 	m.input.SetSuggestions(m.History)
 	m.filteredHistory = nil
@@ -107,10 +100,8 @@ func (m *Model) saveHistoryToFile() error {
 		return err
 	}
 	tmpPath := tmp.Name()
-	// Cleanup-path errors below are intentionally discarded: the primary
-	// error is already what the caller needs to see, and best-effort
-	// removal of the temp file is enough — leaking a tmp file is not worth
-	// shadowing the real failure.
+	// Cleanup errors below are discarded: best-effort temp removal must not
+	// shadow the primary failure.
 	if _, err := tmp.Write(jsonData); err != nil {
 		_ = tmp.Close()
 		_ = os.Remove(tmpPath)
@@ -121,9 +112,8 @@ func (m *Model) saveHistoryToFile() error {
 		return err
 	}
 	if err := os.Rename(tmpPath, m.historyFilePath); err != nil {
-		// Rename can fail on Windows if the destination exists, on
-		// permission errors, or across filesystems. Clean up so repeated
-		// failures don't leave a trail of history-*.json.tmp files.
+		// Rename can fail (Windows dest-exists, permissions, cross-fs); clean
+		// up so repeated failures don't leave a trail of tmp files.
 		_ = os.Remove(tmpPath)
 		return err
 	}
@@ -165,8 +155,7 @@ func (m *Model) loadHistoryFromFile() error {
 	m.History = jsonData.History
 	if m.HistoryLimit > 0 && len(m.History) > m.HistoryLimit {
 		// Clone rather than re-slice so the unreachable tail of the
-		// unmarshalled array can be GC'd. With a small HistoryLimit and
-		// a large file, the difference is the working set we pin.
+		// unmarshalled array can be GC'd.
 		m.History = slices.Clone(m.History[:m.HistoryLimit])
 	}
 	if m.HistoryLimit <= 0 {

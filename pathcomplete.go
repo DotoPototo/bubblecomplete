@@ -26,26 +26,15 @@ const (
 )
 
 // pathState is the per-keystroke result of [activeFileArgument] plus
-// classification and candidate generation. Stored on [Model], read by
-// [Model.Render] and the validation-style suppression.
-//
-// Refreshed on every input change (the input-changed branch in Update)
-// AND on every Tab cycle and cycle-revert (keyTab), so the offsets and
-// validity always reflect the value currently in [Model.input]. Files
-// cycled-to carry a trailing space which makes activeFileArgument
-// inactive — overlay correctly absent for that preview. Dirs cycle with
-// the overlay active and the colour reflects the cycled-to dir.
+// classification and candidate generation. Refreshed on every input change
+// AND on every Tab cycle/revert (keyTab), so offsets and validity always
+// reflect the value currently in [Model.input].
 type pathState struct {
-	// active is true when the user is currently editing a value for a
-	// file/dir-typed argument and the feature is enabled.
 	active bool
-	// kind is the argument's [ArgumentType] (one of FileArgument,
-	// DirArgument, FileDirArgument) when active.
+	// kind is one of FileArgument, DirArgument, FileDirArgument.
 	kind ArgumentType
-	// argName is the active argument's display name as produced by
-	// argument.getName() — used to verify that a PathNotFound validation
-	// error actually belongs to the active token before suppressing
-	// whole-input red.
+	// argName verifies a PathNotFound validation error belongs to this
+	// argument before suppressing whole-input red.
 	argName string
 	// valueStart and valueEnd are byte offsets in m.input.Value() of the
 	// unquoted value range — used by the render overlay.
@@ -53,40 +42,25 @@ type pathState struct {
 	valueEnd   int
 	// base is the basename prefix from [resolvePath], used as the
 	// matchPrefix when path candidates replace the completion list.
-	base string
-	// validity drives the per-token overlay style.
+	base     string
 	validity pathValidity
-	// candidates is the list rendered in place of the normal completion
-	// rows when active and non-empty.
+	// candidates is rendered in place of the normal completion rows when
+	// active and non-empty.
 	candidates []pathCompletion
-	// droppedSorted is the count of fully-verified matching entries that
-	// passed the kind/hidden/prefix filters but were truncated because
-	// the survivor list exceeded [Model.FilesystemCompletionLimit].
-	// These are real "+ N more" candidates the user could reach by
-	// narrowing the prefix — the renderer surfaces them as the primary
-	// truncation hint.
+	// droppedSorted counts verified matches truncated past
+	// [Model.FilesystemCompletionLimit] — real "+ N more" entries the user
+	// could reach by narrowing the prefix.
 	droppedSorted int
-	// unresolvedEntries is the count of symlink-OR-unknown-kind entries we
-	// could NOT verify because the per-pass stat budget was exhausted.
-	// Some might be valid candidates after resolution; some might be
-	// broken symlinks or the wrong kind for the active argument. The
-	// renderer surfaces this with weaker wording than droppedSorted —
-	// it's a "couldn't classify" signal, not a "found more" signal.
-	//
-	// The field name says "entries" because kindUnknown entries also count
-	// here, but the user-facing footer wording says "symlinks" because in
-	// practice the unknown-kind case is extremely rare (Go's stdlib
-	// resolves DT_UNKNOWN via lstat at readdir time, so kindUnknown only
-	// surfaces for non-standard fs.FS implementations). The naming
-	// asymmetry is deliberate: internal precision, UI clarity for the
-	// realistic case.
+	// unresolvedEntries counts symlink/unknown-kind entries the stat budget
+	// couldn't verify — surfaced with weaker wording than droppedSorted.
+	// The footer says "symlinks" because kindUnknown is vanishingly rare
+	// (Go's stdlib resolves DT_UNKNOWN via lstat at readdir time).
 	unresolvedEntries int
 }
 
-// pathCompletion is a [completion] backed by a filesystem entry under the
-// active file/dir argument value. It carries the full active-token
-// replacement in insertion so the existing keyTab pretext + getAutocomplete
-// concatenation works unchanged for positional, space-separated flag, and
+// pathCompletion is a [completion] backed by a filesystem entry. insertion
+// carries the FULL active-token replacement so keyTab's pretext +
+// getAutocomplete concatenation works unchanged for positional, flag, and
 // equals-form values.
 type pathCompletion struct {
 	displayName string // basename + "/" if directory
@@ -99,21 +73,11 @@ func (p pathCompletion) getName() string         { return p.displayName }
 func (p pathCompletion) getDescription() string  { return p.description }
 func (p pathCompletion) getAutocomplete() string { return p.insertion }
 
-// statBudget returns the maximum number of [os.Stat] calls
-// generateCandidates will make per pass to resolve symlink / unknown-type
-// target kinds. Tying the budget to limit means worst-case CPU per
-// keystroke scales with the candidate cap the host configured: with the
-// default limit of 200, at most 200 stats are made even in a directory of
-// 100k symlinks. A floor protects the small-limit case from being
-// pathologically restrictive.
-//
-// The budget primarily exists to cap CPU on pathological cases. For the
-// typical mix of regular files and dirs (with DirEntry.Type() already
-// populated) it has no effect on output. For symlink-heavy directories
-// where dirs-first sorting would have promoted a late symlink-to-dir, the
-// budget can cause that entry to be dropped entirely rather than sorted
-// to the front — an accepted candidate-quality tradeoff against bounded
-// worst-case latency.
+// statBudget caps the [os.Stat] calls generateCandidates makes per pass to
+// resolve symlink/unknown target kinds, tying worst-case CPU per keystroke
+// to the configured candidate limit (with a floor for tiny limits). In
+// symlink-heavy dirs the budget can drop a late symlink-to-dir that sorting
+// would have promoted — an accepted tradeoff for bounded latency.
 func statBudget(limit int) int {
 	const floor = 16
 	if limit < floor {
@@ -128,10 +92,8 @@ func statBudget(limit int) int {
 type activeArg struct {
 	// kind is one of FileArgument, DirArgument, FileDirArgument.
 	kind ArgumentType
-	// name is the active argument's display name as produced by
-	// argument.getName(). Used by isPartialPathMidType to verify that a
-	// PathNotFound validation error belongs to this argument before
-	// suppressing whole-input red.
+	// name is the argument's display name, matched against a PathNotFound
+	// error's Argument by isPartialPathMidType.
 	name string
 	// valueStart and valueEnd are byte offsets in the input string that
 	// bound the *unquoted* value text — used by the render overlay.
@@ -185,8 +147,7 @@ func activeFileArgument(input string, commands []*Command) (activeArg, bool) {
 	activeToken := tokens[len(tokens)-1]
 	tokenRaw := input[activeToken.Start:activeToken.End]
 
-	// Case 1: equals-form flag value. Distinguished by the active token
-	// being flag-shaped (starts with '-') AND containing an '='.
+	// Case 1: equals-form flag value.
 	if strings.HasPrefix(activeToken.Unquoted, "-") && strings.Contains(activeToken.Unquoted, "=") {
 		before, _, _ := strings.Cut(tokenRaw, "=")
 		allFlags := slices.Concat(finalCmd.Flags, globalFlags)
@@ -199,7 +160,6 @@ func activeFileArgument(input string, commands []*Command) (activeArg, bool) {
 			}
 			return equalsFormActiveArg(input, activeToken, tokenRaw, f.Type, f.getName())
 		}
-		// Flag prefix didn't match any known flag — not active.
 		return activeArg{}, false
 	}
 
@@ -286,8 +246,6 @@ func tokenActiveArg(tok token, kind ArgumentType, name string) (activeArg, bool)
 	return a, true
 }
 
-// isFileLikeArg reports whether t is one of the filesystem-backed argument
-// types that this feature targets.
 func isFileLikeArg(t ArgumentType) bool {
 	return t == FileArgument || t == DirArgument || t == FileDirArgument
 }
@@ -366,29 +324,21 @@ func prefixMatch(entry *dirCacheEntry, base string) bool {
 	return false
 }
 
-// candidateRequest groups the inputs to [generateCandidates] so the
-// function signature stays manageable. Callers should construct the
-// struct deliberately rather than relying on field defaults — several
-// fields have meaningful zero values (e.g. an empty tokenPrefix or
-// userPrefix, openingQuote == 0 meaning "no quote", hiddenFiles ==
-// false), so a partial literal must be intentional, not accidental.
+// candidateRequest groups the inputs to [generateCandidates].
 type candidateRequest struct {
-	// kind is the active argument's type (FileArgument / DirArgument /
-	// FileDirArgument) — drives the inclusion filter.
+	// kind drives the inclusion filter.
 	kind ArgumentType
-	// tokenPrefix is the leading bytes of the active token that precede
-	// the value (flag prefix and/or opening quote). Used to build
-	// insertion strings that preserve the user's token shape.
+	// tokenPrefix is the leading bytes of the active token before the value
+	// (flag prefix and/or opening quote), preserved in insertions.
 	tokenPrefix string
-	// userPrefix is the leading bytes of the typed value up to the last
-	// separator before base ("~/", "./", "/abs/path/", ""). Preserved
-	// verbatim in insertions so completion keeps the user's style.
+	// userPrefix is the typed value up to the last separator before base
+	// ("~/", "./", "/abs/path/", ""), preserved verbatim in insertions so
+	// completion keeps the user's style.
 	userPrefix string
-	// openingQuote is 0 if no quote, else '"' or '\'' — drives insertion
-	// quoting and auto-quote-on-space logic in [buildCompletion].
+	// openingQuote is 0 if no quote, else '"' or '\''.
 	openingQuote rune
-	// base is the basename prefix to match against. Empty when the typed
-	// value ends in a separator (list-all-children case).
+	// base is the basename prefix to match. Empty when the typed value ends
+	// in a separator (list-all-children case).
 	base string
 	// entry is the parent directory's cached ReadDir result.
 	entry *dirCacheEntry
@@ -396,31 +346,17 @@ type candidateRequest struct {
 	limit int
 	// hiddenFiles surfaces dotfiles even when base does not start with ".".
 	hiddenFiles bool
-	// parent is the absolute parent directory. Used to construct stat
-	// paths when resolving symlink/unknown entry kinds.
+	// parent is the absolute parent directory, used for symlink stat paths.
 	parent string
 }
 
 // generateCandidates produces the [pathCompletion] list for the active
-// value. Iteration order is the ReadDir result (sorted lex). Survivors are
-// re-sorted dirs-first, case-fold alphabetic, then truncated to limit.
-//
-// Symlink target kinds are resolved via [os.Stat] for entries that survive
-// the prefix and hidden filters; [statBudget] bounds the worst-case stat
-// count per pass.
-//
-// Returns the candidate list plus two separate drop counts:
-//   - droppedSorted: matching entries that passed all filters but were
-//     truncated because the survivor list exceeded the configured limit.
-//     These are verified "+ N more" — narrowing the prefix would reach them.
-//   - unresolvedEntries: symlink/unknown-kind entries the stat budget
-//     couldn't classify in this pass. Some might be valid candidates if
-//     resolved; some might be broken or the wrong kind. These get weaker
-//     UI treatment than droppedSorted.
-//
-// Keeping the two counts separate (rather than summing them) lets the
-// renderer phrase the footer honestly: the strong "+ N more" claim only
-// applies to verified drops.
+// value: filter on prefix/hidden/kind, resolve symlink targets within
+// [statBudget], sort dirs-first case-fold alphabetic, truncate to limit.
+// The two drop counts stay separate so the renderer can phrase the footer
+// honestly: droppedSorted are verified "+ N more" matches reachable by
+// narrowing; unresolvedEntries are stat-budget-skipped entries that might
+// not be candidates at all.
 func generateCandidates(req candidateRequest) (candidates []pathCompletion, droppedSorted, unresolvedEntries int) {
 	if req.entry.err != nil {
 		return nil, 0, 0
@@ -476,7 +412,6 @@ func generateCandidates(req candidateRequest) (candidates []pathCompletion, drop
 		survivors = append(survivors, prelim{name: name, isDir: k == kindDir, isSymlink: wasSymlink})
 	}
 
-	// Dirs first, then case-fold alphabetic within each group.
 	sort.SliceStable(survivors, func(i, j int) bool {
 		if survivors[i].isDir != survivors[j].isDir {
 			return survivors[i].isDir
@@ -496,15 +431,9 @@ func generateCandidates(req candidateRequest) (candidates []pathCompletion, drop
 	return out, droppedSorted, unresolvedEntries
 }
 
-// includeKind applies the candidate-inclusion table:
-//   - FileArgument: files + dirs (dirs for drill-down)
-//   - DirArgument:  dirs only
-//   - FileDirArgument: files + dirs
-//
-// Specials (devices, sockets, pipes — kindOther) never appear in candidates,
-// regardless of ArgumentType. Submitting a typed path to a special still
-// classifies and validates per kind, so the invariant holds for any
-// concrete typed path.
+// includeKind admits dirs for every kind (drill-down) and files unless
+// DirArgument. Specials (devices, sockets, pipes) never appear as
+// candidates, though a typed path to one still validates per kind.
 func includeKind(arg ArgumentType, k entryKind) bool {
 	switch k {
 	case kindFile:
@@ -516,26 +445,13 @@ func includeKind(arg ArgumentType, k entryKind) bool {
 	}
 }
 
-// buildCompletion assembles the displayName and the full active-token
-// replacement string. Quoting:
-//   - openingQuote != 0: keep the user's quote style; restore the closer.
-//   - openingQuote == 0 and the name contains a space: auto-quote with '"'
-//     uniformly for files and directories. The opener slots between any
-//     tokenPrefix (e.g. "--path=") and the userPrefix.
-//
-// File completions append a trailing space to the insertion — bash-style
-// "this token is done, move on." Directories deliberately omit the space
-// so the next Tab can drill into the dir's children. Autotrim (default
-// on) strips the trailing space at submit time.
-//
-// When isSymlink is true (the original DirEntry was a symlink, regardless
-// of its target kind), the description carries "symlink → file/dir" so
-// the user can see that the entry isn't a regular file/directory.
-//
-// Known limitation: filenames containing literal quote characters (" or ')
-// are inserted verbatim, which the tokenizer cannot re-parse as a single
-// token. Such filenames are vanishingly rare in practice and documented as
-// out of scope for v1.
+// buildCompletion assembles the display name and full active-token
+// replacement. Names containing a space are auto-quoted with '"' when the
+// user hasn't opened a quote; an existing opener is kept and its closer
+// restored. Files append a trailing space (bash-style "token done") —
+// directories deliberately omit it so the next Tab drills in. Known
+// limitation: filenames containing literal quote characters are inserted
+// verbatim and won't re-parse as a single token.
 func buildCompletion(name string, isDir, isSymlink bool, tokenPrefix, userPrefix string, openingQuote rune) pathCompletion {
 	displayName := name
 	if isDir {
@@ -578,16 +494,10 @@ func buildCompletion(name string, isDir, isSymlink bool, tokenPrefix, userPrefix
 }
 
 // isPartialPathMidType reports whether the whole-input invalid style should
-// be suppressed in favour of the path-range overlay. True only when:
-//   - the active path is a strict prefix (pathPartial), AND
-//   - the validation error is a PathNotFound, AND
-//   - the error's Argument matches the active argument's name.
-//
-// The argument-name check matters for commands with multiple path
-// positionals: typing `cp /missing/foo /tmp/par` would otherwise suppress
-// the whole-input red even though the validation error comes from the
-// FIRST (committed) path, not the partial second one. Suppression should
-// only fire when the partial path IS the cause of the error.
+// be suppressed in favour of the path-range overlay. The argument-name
+// check matters for commands with multiple path positionals: in
+// `cp /missing/foo /tmp/par` the red comes from the FIRST (committed) path,
+// and suppression must only fire when the partial path IS the cause.
 func (m Model) isPartialPathMidType() bool {
 	if !m.pathState.active || m.pathState.validity != pathPartial {
 		return false
@@ -603,14 +513,10 @@ func (m Model) isPartialPathMidType() bool {
 }
 
 // recomputePathState refreshes m.pathState from the current input value.
-// Called from Update's input-changed branch before getCompletions and
-// validateInput, so getCompletions can wholesale-replace its result list
-// with pathState.candidates when the active argument is file/dir-typed.
-//
-// When the feature is disabled or no file/dir value is active, pathState is
-// reset to its zero value. Cost in that case is one bool check plus the
-// activeFileArgument detector (tokenisation + command walk, which run for
-// existing completion logic anyway).
+// Must run before getCompletions in Update's input-changed branch so
+// getCompletions can wholesale-replace its result list with
+// pathState.candidates. Resets to the zero value when the feature is
+// disabled or no file/dir value is active.
 func (m *Model) recomputePathState() {
 	m.pathState = pathState{}
 	if !m.FilesystemCompletions {

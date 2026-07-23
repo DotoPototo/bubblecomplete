@@ -95,8 +95,7 @@ type Model struct {
 
 	// FilesystemCompletions enables live filesystem completion and validity
 	// colouring for FileArgument, DirArgument, and FileDirArgument values.
-	// Default false. Hosts that don't enable this see the pre-feature
-	// behaviour unchanged.
+	// Default false.
 	FilesystemCompletions bool
 	// FilesystemCompletionLimit caps the per-keystroke candidate count.
 	// Default 200. Values ≤ 0 are clamped to 1 at the use site.
@@ -107,9 +106,6 @@ type Model struct {
 
 	// pathCache is lazily initialised on first use by recomputePathState.
 	pathCache *dirCache
-	// pathState is the per-keystroke result of activeFileArgument plus
-	// classification and candidate generation. Read by Render and the
-	// validation-style suppression.
 	pathState pathState
 
 	styles Styles
@@ -403,10 +399,8 @@ func (m *Model) SetKeyMap(k KeyMap) {
 	m.keymap = k
 }
 
-// SetWidth sets the width of the model.
-//
-// This is used to calculate the offset for the completions and when text
-// should be wrapped. Values less than 1 are clamped to 1.
+// SetWidth sets the component width used for completion offsets and text
+// wrapping. Values less than 1 are clamped to 1.
 func (m *Model) SetWidth(width int) {
 	if width < 1 {
 		width = 1

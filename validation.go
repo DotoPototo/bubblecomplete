@@ -78,11 +78,9 @@ func validateCommandInput(input string, commands []*Command) error {
 
 			err := validateShortFlags(part, parts, &i, parentCmd, globalFlags)
 			if err != nil {
-				// Only fall back to long/PsFlag parsing when the short-flag
-				// parser failed because the char wasn't a known short flag.
-				// Other errors (malformed token, misused position, missing
-				// value) come from a successful short-flag identification
-				// and must surface to the user.
+				// Fall back to long/PsFlag parsing only on UnknownFlag; other
+				// errors come from a successful short-flag identification and
+				// must surface to the user.
 				var ve *ValidationError
 				if errors.As(err, &ve) && ve.Kind == UnknownFlag {
 					if fallbackErr := validateFlag(part, parts, &i, parentCmd, globalFlags); fallbackErr != nil {
@@ -187,9 +185,6 @@ func looksLikeFlagValue(arg argument, next string) bool {
 		_, err := strconv.ParseFloat(next, 64)
 		return err == nil
 	default:
-		// String/Bool/File/Dir/FileDir flags must not consume a token that
-		// starts with "-" as their value; the caller will surface a
-		// missing-value error instead.
 		return false
 	}
 }
@@ -216,8 +211,7 @@ func validateShortFlags(part string, parts []string, i *int, parentCmd *Command,
 		}
 	}
 
-	// Compute the effective flag set once. Validation runs on every
-	// keystroke, so Concat-per-char would allocate redundantly.
+	// Concat once, not per char — validation runs on every keystroke.
 	allFlags := slices.Concat(parentCmd.Flags, globalFlags)
 
 	for j := range len(combinedFlags) {
@@ -264,10 +258,8 @@ func validatePositionalArgument(part string, positionalIndex *int, parentCmd *Co
 	return nil
 }
 
-// findCommand returns the command matching name, or (nil, false) if none.
-// Returns a bool rather than an error because the caller only branches on
-// missing/present — the error message was never inspected and allocating one
-// per validation pass added pointless overhead on the keystroke hot path.
+// findCommand returns the command matching name. Bool rather than error:
+// callers only branch on presence, and this runs on the keystroke hot path.
 func findCommand(commands []*Command, name string) (*Command, bool) {
 	for _, cmd := range commands {
 		if cmd.Command == name {
@@ -277,8 +269,8 @@ func findCommand(commands []*Command, name string) (*Command, bool) {
 	return nil, false
 }
 
-// findFlag returns the flag whose ShortFlag/LongFlag/PsFlag matches name, or
-// (nil, false) if none. Bool return for the same reason as [findCommand].
+// findFlag returns the flag whose ShortFlag/LongFlag/PsFlag matches name.
+// Bool return for the same reason as [findCommand].
 func findFlag(flags []*Flag, name string) (*Flag, bool) {
 	for _, f := range flags {
 		if f.ShortFlag == name || f.LongFlag == name || f.PsFlag == name {
@@ -297,7 +289,6 @@ func validateArgumentValue(arg argument, value string) error {
 	case FloatArgument:
 		return validateFloatArgument(arg, value)
 	case BoolArgument:
-		// No validation needed for boolean, presence is enough
 		return nil
 	case FileArgument:
 		return validateFileArgument(arg, value)
@@ -372,8 +363,7 @@ func validateFileDirArgument(arg argument, value string) error {
 }
 
 func validatePath(arg argument, value string, wantFile, wantDir bool) error {
-	// File/dir args validate quotes the same way string args do — unclosed
-	// quotes are surfaced as UnclosedQuote rather than producing a misleading
+	// Unclosed quotes surface as UnclosedQuote rather than a misleading
 	// "path not found" against the literal quoted string.
 	if err := checkUnclosedQuote(arg, value, "\""); err != nil {
 		return err

@@ -82,9 +82,8 @@ func (m Model) ShowingCompletions() bool {
 	return len(m.completions) > 0 && m.historyIndex == -1 && (m.input.Value() != "" || m.showAll)
 }
 
-// CloseCompletions hides the list of completions so it's no longer visible
-//
-// Sets the input back to what the user had typed, if completions were being cycled through
+// CloseCompletions hides the completion list, restoring the input to what
+// the user had typed if completions were being cycled.
 func (m *Model) CloseCompletions() {
 	if m.completions == nil {
 		return
@@ -113,8 +112,6 @@ func (m Model) resetModel() Model {
 	return m
 }
 
-// clearTransientCompletionState wipes per-keystroke completion- and history-
-// cycling state without touching the input value or validation error.
 func (m Model) clearTransientCompletionState() Model {
 	m.completionHolder = ""
 	m.completionIndex = -1
@@ -220,11 +217,9 @@ func (m Model) keyTab(forward bool) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	// Single-match no-op guard: don't re-insert a name that's already fully
-	// typed. Path candidates are exempt — their names are bare basenames, so
-	// a suffix match doesn't mean "already inserted" (input "sub/" matches a
-	// same-named child "sub"), and Tab must still drill down or append the
-	// trailing space.
+	// Don't re-insert an already fully typed name. Path candidates are
+	// exempt: their names are bare basenames, so a suffix match doesn't mean
+	// "already inserted" ("sub/" matches a same-named child "sub").
 	if len(m.completions) == 1 && !m.pathState.active {
 		if strings.HasSuffix(trimmedInput, m.completions[0].getName()) {
 			return m, nil

@@ -31,18 +31,10 @@ func (m Model) Render() string {
 }
 
 // renderedInput returns m.input.View() with the path-validity overlay
-// applied when m.pathState is active. The overlay is skipped when:
-//   - the rendered input width exceeds m.width (textinput's internal
-//     scroll window obscures cell offsets and we'd paint garbage)
-//   - the stored offsets are out of range for the current value
-//     (defensive — shouldn't fire under correct lifecycle but cheap to
-//     check)
-//
-// During Tab cycling the overlay does apply: keyTab refreshes pathState
-// after every multi-match SetValue so the offsets and validity match the
-// cycled preview value. Cycling between candidates of different validity
-// (e.g. a valid file vs a directory under FileArgument) therefore shows
-// different colours per Tab.
+// applied when m.pathState is active. The overlay is skipped when the
+// rendered input exceeds m.width (textinput's internal scroll window
+// obscures cell offsets — we'd paint garbage) or when the stored offsets
+// are out of range for the current value.
 func (m Model) renderedInput() string {
 	base := m.input.View()
 	if !m.pathState.active {
@@ -104,8 +96,7 @@ func kindOf(c completion) completionKind {
 	case *Flag:
 		return flagKind
 	case pathCompletion:
-		// Path candidates are filesystem entries surfaced for an argument
-		// value — map to argumentKind so ShowIcons uses ArgumentIcon.
+		// Mapped to argumentKind so ShowIcons uses ArgumentIcon.
 		return argumentKind
 	}
 	return commandKind
@@ -160,8 +151,6 @@ func (m Model) completionBoxWidth(rows []completionRow) (titleWidth, lineWidth i
 	return titleWidth, titleWidth + maxDesc
 }
 
-// maxIconWidth returns the largest display width across icons used by the given rows.
-// Returns 0 if no row's kind has a non-empty icon.
 func (m Model) maxIconWidth(rows []completionRow) int {
 	seen := map[completionKind]bool{}
 	for _, r := range rows {
@@ -232,14 +221,10 @@ func (m Model) showCompletionsRender() string {
 	style := m.getCompletionsStyle(start, end, len(rendered))
 	renderedBox := style.Margin(0, 0, 0, offset).Render(box)
 
-	// When path completions were dropped — either truncated post-sort or
-	// skipped because the symlink stat budget ran out — append a subtle
-	// footer line BELOW the box describing what's missing. The footer is
-	// render-only (never added to m.completions), so Tab cycling cannot
-	// select or accept it as a completion row. Left-aligned with the box.
-	// The candidates check keeps the footer off the fallback rows: with
-	// zero candidates getCompletions shows normal completions instead, and
-	// a path footer under those would mislead.
+	// Footer for dropped path candidates. Render-only — never added to
+	// m.completions, so Tab cycling can't select it. The candidates check
+	// keeps it off the non-path fallback rows getCompletions shows when
+	// candidates is empty.
 	if m.pathState.active && len(m.pathState.candidates) > 0 &&
 		(m.pathState.droppedSorted > 0 || m.pathState.unresolvedEntries > 0) {
 		footer := m.renderTruncationFooter(offset)
@@ -252,20 +237,11 @@ func (m Model) showCompletionsRender() string {
 	return m.renderedInput() + "\n" + renderedBox
 }
 
-// renderTruncationFooter formats the hint that appears below the
-// completion box when generateCandidates dropped some matches. Two
-// distinct counts get distinct wording:
-//
-//   - droppedSorted is verified — those entries passed the kind and prefix
-//     filters and would be reachable by narrowing the prefix. Surfaced as
-//     "+ N more".
-//   - unresolvedEntries is unverified — symlinks the stat budget skipped.
-//     Some might be valid, some might be broken or wrong-kind. Surfaced
-//     with weaker "N unresolved" wording so we don't over-promise results.
-//
-// Combined wording when both counts are non-zero. Styled subtly (muted
-// foreground, italic) so it doesn't compete with the active completion
-// rows. Left margin matches the box.
+// renderTruncationFooter formats the hint shown when generateCandidates
+// dropped matches. droppedSorted entries are verified matches reachable by
+// narrowing — surfaced as "+ N more". unresolvedEntries are symlinks the
+// stat budget skipped, possibly broken or wrong-kind — surfaced with weaker
+// "unresolved" wording so we don't over-promise.
 func (m Model) renderTruncationFooter(leftMargin int) string {
 	var text string
 	switch {
@@ -295,11 +271,9 @@ func (m Model) renderCompletionRow(row completionRow, titleWidth, completionsWid
 		}
 	}
 
-	// Cap the rendered name at the box width minus the row's side padding
-	// (one space each side in the JoinHorizontal below). Without this, a
-	// long path completion like "/Users/jane/very/long/.../file.md" would
-	// overflow the box on a narrow terminal. ansi.Truncate is style-aware
-	// — it preserves any match-highlight or icon ANSI prefix.
+	// Cap the name at the box width minus side padding so long paths can't
+	// overflow the box. ansi.Truncate is style-aware — it preserves any
+	// match-highlight or icon ANSI prefix.
 	maxNameWidth := max(0, completionsWidth-2)
 	if lipgloss.Width(name) > maxNameWidth {
 		name = ansi.Truncate(name, maxNameWidth, "…")
@@ -313,9 +287,7 @@ func (m Model) renderCompletionRow(row completionRow, titleWidth, completionsWid
 		if !selected {
 			descText = m.styles.Completion.Description.Render(descText)
 		}
-		// Clamp width and padding to >= 0: a name wider than the title
-		// column (very narrow terminal, long completion name) would
-		// otherwise pass negative values to lipgloss.
+		// A name wider than the title column would pass negatives to lipgloss.
 		descWidth := max(0, completionsWidth-nameWidth)
 		descPad := max(0, titleWidth-nameWidth)
 		rowText = lipgloss.JoinHorizontal(
@@ -399,8 +371,7 @@ func (m Model) calculateCompletionsOffset(completions string) int {
 		offset = m.width - lipgloss.Width(completions) - 2
 	}
 
-	// Clamp to >= 0 so a too-wide completions box on a tiny terminal doesn't
-	// hand a negative margin to lipgloss (would render off-screen).
+	// A too-wide box on a tiny terminal must not hand lipgloss a negative margin.
 	if offset < 0 {
 		offset = 0
 	}
@@ -408,8 +379,7 @@ func (m Model) calculateCompletionsOffset(completions string) int {
 }
 
 // getCompletionsWidth caps the completion box at the terminal width minus a
-// small border reserve. Narrow terminals are respected — we never return a
-// width larger than the visible area.
+// small border reserve.
 func (m Model) getCompletionsWidth(maxLineLength int) int {
 	maxTermWidth := max(1, m.width-8)
 	if maxLineLength > maxTermWidth {
@@ -418,27 +388,13 @@ func (m Model) getCompletionsWidth(maxLineLength int) int {
 	return maxLineLength
 }
 
-// findMatchRange finds the CELL-based start and end positions within name
-// where matchPrefix (case-insensitively) matches the start of any
-// space-separated word. Cell-based so the returned range plugs directly
-// into [lipgloss.NewRange], which is column/cell-indexed — not rune-indexed.
-//
-// This handles flag display names like "-m --message" where the prefix
-// "--me" should highlight the "--me" portion of "--message". It also
-// handles wide-rune names ("日本.txt" with prefix "日") correctly: lipgloss
-// measures "日" as 2 cells, so the highlight covers both columns rather
-// than just one — the bug a naive rune-position implementation would hit.
-//
-// Best-effort caveat: the returned range uses lipgloss.Width(matchPrefix)
-// for the highlight length, which assumes case folding preserves cell
-// width. That's true for ASCII and for typical Latin/CJK casing, but a
-// few obscure Unicode codepoints (e.g. the Turkish dotless-İ pair, some
-// digraphs) fold to substrings whose cell width differs from the source.
-// In those rare cases the highlight may be off by one cell at the
-// trailing edge. Acceptable for the completion-row use case; revisit if
-// it surfaces in real filenames.
-//
-// Returns (-1, -1) if no match is found.
+// findMatchRange returns the CELL-based [start, end) where matchPrefix
+// case-insensitively matches the start of any space-separated word in name
+// (e.g. "--me" highlights inside "-m --message"), or (-1, -1). Cell-based so
+// the range plugs into the column-indexed [lipgloss.NewRange] and wide runes
+// ("日" = 2 cells) highlight correctly. Best-effort: the highlight length is
+// lipgloss.Width(matchPrefix), which assumes case folding preserves cell
+// width — rare Unicode fold pairs may be off by one at the trailing edge.
 func findMatchRange(name, matchPrefix string) (int, int) {
 	if matchPrefix == "" {
 		return -1, -1
@@ -450,7 +406,7 @@ func findMatchRange(name, matchPrefix string) (int, int) {
 		if strings.HasPrefix(strings.ToLower(word), lowerPrefix) {
 			return cellPos, cellPos + prefixCells
 		}
-		cellPos += lipgloss.Width(word) + 1 // +1 for the space
+		cellPos += lipgloss.Width(word) + 1
 	}
 	return -1, -1
 }
