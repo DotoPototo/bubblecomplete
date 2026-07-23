@@ -152,10 +152,11 @@ func errInvalidFloat(name string, err error) *ValidationError {
 	}
 }
 
-func errPathNotExist(pathType, name string) *ValidationError {
+func errPathNotExist(pathType, name string, err error) *ValidationError {
 	return &ValidationError{
 		Kind:     PathNotFound,
 		Argument: name,
+		Err:      err,
 		msg:      pathType + " does not exist for argument: " + name,
 	}
 }

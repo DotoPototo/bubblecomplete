@@ -404,7 +404,7 @@ func validatePath(arg argument, value string, wantFile, wantDir bool) error {
 	info, err := os.Stat(fullClean)
 	if err != nil {
 		if os.IsNotExist(err) {
-			return errPathNotExist(pathType, arg.getName())
+			return errPathNotExist(pathType, arg.getName(), err)
 		}
 		return errPathAccess(pathType, arg.getName(), err)
 	}

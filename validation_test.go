@@ -2,6 +2,7 @@ package bubblecomplete
 
 import (
 	"errors"
+	"io/fs"
 	"os"
 	"path/filepath"
 	"testing"
@@ -448,11 +449,15 @@ func TestValidatePath_TildeExpansion(t *testing.T) {
 		t.Errorf("validatePath(%q): %v, want nil", "~/test_file.txt", err)
 	}
 
-	// ~/nonexistent → PathNotFound.
+	// ~/nonexistent → PathNotFound, carrying the underlying os error as
+	// documented on the kind.
 	var ve *ValidationError
 	err := validatePath(arg, "~/nonexistent", true, false)
 	if !errors.As(err, &ve) || ve.Kind != PathNotFound {
 		t.Errorf("validatePath(%q): got %v, want PathNotFound", "~/nonexistent", err)
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Errorf("validatePath(%q): error does not unwrap to fs.ErrNotExist", "~/nonexistent")
 	}
 
 	// Bare ~ under FileArgument → IsDir error (home itself is a directory).
