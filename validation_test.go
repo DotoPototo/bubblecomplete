@@ -56,7 +56,7 @@ func TestValidateCommandInput(t *testing.T) {
 			expected: nil,
 		},
 		{
-			name:     "valind input with flag arg after equals",
+			name:     "valid input with flag arg after equals",
 			input:    "cat -f=TEST ./README.md",
 			expected: nil,
 		},
@@ -66,7 +66,7 @@ func TestValidateCommandInput(t *testing.T) {
 			expected: nil,
 		},
 		{
-			name:     "valind input with flag arg after equals in single quotes",
+			name:     "valid input with flag arg after equals in single quotes",
 			input:    "cat -f='TEST FILE' ./README.md",
 			expected: nil,
 		},
