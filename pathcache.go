@@ -3,6 +3,7 @@ package bubblecomplete
 import (
 	"io/fs"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -89,7 +90,9 @@ func (e *dirCacheEntry) matchKey(base string) (names []string, needle string) {
 }
 
 // dirCache is a bounded LRU + TTL cache of [os.ReadDir] results, keyed by
-// cleaned absolute parent path.
+// cleaned parent path. The key is normally absolute; it can be relative
+// when [os.Getwd] fails and [resolvePath] falls back to the input as-is —
+// the TTL bounds any staleness if the process working directory changes.
 //
 // The mutex makes the cache safe under future tea.Cmd async paths. Production
 // callers run on Bubble Tea's single Update goroutine where it's
@@ -171,14 +174,17 @@ func fetchDir(parent string) *dirCacheEntry {
 }
 
 // touchLocked moves parent to the front of the LRU order. Caller holds c.mu.
+// Rotates in place — this runs on every cache hit (every keystroke), so it
+// must not reallocate the order slice.
 func (c *dirCache) touchLocked(parent string) {
-	for i, p := range c.order {
-		if p == parent {
-			c.order = append(c.order[:i], c.order[i+1:]...)
-			break
-		}
+	if i := slices.Index(c.order, parent); i >= 0 {
+		copy(c.order[1:i+1], c.order[:i])
+		c.order[0] = parent
+		return
 	}
-	c.order = append([]string{parent}, c.order...)
+	c.order = append(c.order, "")
+	copy(c.order[1:], c.order)
+	c.order[0] = parent
 }
 
 // evictIfFullLocked drops least-recently-used entries until the cache is
