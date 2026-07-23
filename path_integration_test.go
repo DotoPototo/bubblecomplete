@@ -564,6 +564,56 @@ func TestTabAutoAcceptDrillsIntoUniqueDir(t *testing.T) {
 	}
 }
 
+// TestTabDrillDown_SameNameChild guards the keyTab single-match no-op
+// exemption for path candidates: path names are bare basenames, so with
+// input "…/sub/" and a lone child also named "sub", the pre-path-completion
+// HasSuffix guard would judge the candidate "already typed" and make Tab a
+// silent no-op instead of drilling into sub/sub/.
+func TestTabDrillDown_SameNameChild(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdir(t, filepath.Join(dir, "sub"))
+	mustMkdir(t, filepath.Join(dir, "sub", "sub"))
+
+	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "sub")+"/")
+	if len(m.completions) != 1 {
+		t.Fatalf("setup: want single candidate, got %d", len(m.completions))
+	}
+
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	want := "cat " + filepath.Join(dir, "sub", "sub") + "/"
+	if got := m.input.Value(); got != want {
+		t.Errorf("Tab did not drill into same-named child: got %q, want %q", got, want)
+	}
+}
+
+// TestTabAcceptExactlyTypedFile is the milder cousin of the same-name
+// guard bug: with a filename typed out in full and a single candidate,
+// Tab must still accept it (appending the trailing space) rather than
+// no-op because the basename is already a suffix of the input.
+func TestTabAcceptExactlyTypedFile(t *testing.T) {
+	dir := t.TempDir()
+	mustWriteFile(t, filepath.Join(dir, "notes.txt"))
+
+	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "notes.txt"))
+	if len(m.completions) != 1 {
+		t.Fatalf("setup: want single candidate, got %d", len(m.completions))
+	}
+
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	want := "cat " + filepath.Join(dir, "notes.txt") + " "
+	if got := m.input.Value(); got != want {
+		t.Errorf("Tab did not accept exactly-typed file: got %q, want %q", got, want)
+	}
+}
+
 // TestRender_OverlayInactiveDuringFileCycling locks in the natural
 // interaction between the bash-style trailing-space-after-files rule and
 // the per-cycle pathState refresh: cycled FILE candidates have a trailing

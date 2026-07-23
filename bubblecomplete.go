@@ -220,7 +220,12 @@ func (m Model) keyTab(forward bool) (Model, tea.Cmd) {
 		return m, nil
 	}
 
-	if len(m.completions) == 1 {
+	// Single-match no-op guard: don't re-insert a name that's already fully
+	// typed. Path candidates are exempt — their names are bare basenames, so
+	// a suffix match doesn't mean "already inserted" (input "sub/" matches a
+	// same-named child "sub"), and Tab must still drill down or append the
+	// trailing space.
+	if len(m.completions) == 1 && !m.pathState.active {
 		if strings.HasSuffix(trimmedInput, m.completions[0].getName()) {
 			return m, nil
 		}
