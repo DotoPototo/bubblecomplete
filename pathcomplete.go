@@ -149,17 +149,21 @@ type activeArg struct {
 // returns the metadata needed to drive completion and validity colouring.
 //
 // Returns ok == false when:
-//   - input is empty or ends in a space (no active value token)
+//   - input is empty or ends in a space outside quotes (no active value
+//     token — a space inside an open quote is part of the value)
 //   - no command word has been entered yet
 //   - the active position is a command word, a flag name without value, or a
 //     value for a non-file argument type
 //   - the active value is empty (e.g. "--path=" with nothing after)
 func activeFileArgument(input string, commands []*Command) (activeArg, bool) {
-	if strings.HasSuffix(input, " ") {
-		return activeArg{}, false
-	}
 	tokens := tokenize(input)
 	if len(tokens) == 0 {
+		return activeArg{}, false
+	}
+	// A trailing space ends the active token only when it falls outside a
+	// token; tokenize keeps quoted spaces inside the final token, so its End
+	// reaches len(input) while the user is still typing a quoted value.
+	if tokens[len(tokens)-1].End < len(input) {
 		return activeArg{}, false
 	}
 	parts := splitInput(input)

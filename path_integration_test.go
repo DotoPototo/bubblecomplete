@@ -614,6 +614,34 @@ func TestTabAcceptExactlyTypedFile(t *testing.T) {
 	}
 }
 
+// TestPathStateActiveAcrossQuotedSpace guards activeFileArgument's
+// trailing-space bail-out being token-aware: a space typed inside an open
+// quote ("My Documents) is part of the value, and candidates plus the
+// validity overlay must survive that keystroke rather than flicker off
+// until the next character.
+func TestPathStateActiveAcrossQuotedSpace(t *testing.T) {
+	dir := t.TempDir()
+	mustMkdir(t, filepath.Join(dir, "My Documents"))
+
+	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m = simulateTyping(t, m, `cat "`+dir+`/My`)
+	if !m.pathState.active || len(m.pathState.candidates) == 0 {
+		t.Fatalf("setup: want active pathState with candidates, got active=%v candidates=%d",
+			m.pathState.active, len(m.pathState.candidates))
+	}
+
+	m = simulateTyping(t, m, " ")
+	if !m.pathState.active {
+		t.Errorf("pathState went inactive on a space typed inside an open quote")
+	}
+	if len(m.pathState.candidates) == 0 {
+		t.Errorf("candidates vanished on a space typed inside an open quote")
+	}
+}
+
 // TestRender_OverlayInactiveDuringFileCycling locks in the natural
 // interaction between the bash-style trailing-space-after-files rule and
 // the per-cycle pathState refresh: cycled FILE candidates have a trailing
@@ -645,8 +673,9 @@ func TestRender_OverlayInactiveDuringFileCycling(t *testing.T) {
 	if m.completionHolder == "" {
 		t.Fatal("setup: expected Tab to enter cycling state")
 	}
-	// Cycled file value ends in trailing space → pathState refresh sees
-	// HasSuffix(input, " ") and returns inactive. Overlay skipped.
+	// Cycled file value ends in an unquoted trailing space → the space falls
+	// outside the final token, so activeFileArgument returns inactive.
+	// Overlay skipped.
 	if m.pathState.active {
 		t.Errorf("expected pathState inactive after cycling to a file (trailing space); active=true")
 	}
