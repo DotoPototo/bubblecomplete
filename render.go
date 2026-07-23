@@ -237,7 +237,11 @@ func (m Model) showCompletionsRender() string {
 	// footer line BELOW the box describing what's missing. The footer is
 	// render-only (never added to m.completions), so Tab cycling cannot
 	// select or accept it as a completion row. Left-aligned with the box.
-	if m.pathState.active && (m.pathState.droppedSorted > 0 || m.pathState.unresolvedEntries > 0) {
+	// The candidates check keeps the footer off the fallback rows: with
+	// zero candidates getCompletions shows normal completions instead, and
+	// a path footer under those would mislead.
+	if m.pathState.active && len(m.pathState.candidates) > 0 &&
+		(m.pathState.droppedSorted > 0 || m.pathState.unresolvedEntries > 0) {
 		footer := m.renderTruncationFooter(offset)
 		renderedBox = lipgloss.JoinVertical(lipgloss.Left, renderedBox, footer)
 	}
