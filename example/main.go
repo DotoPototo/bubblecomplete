@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"runtime/pprof"
 
-	bubblecomplete "github.com/dotopototo/bubblecomplete"
+	bubblecomplete "github.com/dotopototo/bubblecomplete/v2"
 
 	tea "charm.land/bubbletea/v2"
 	"charm.land/lipgloss/v2"

@@ -1,7 +1,7 @@
 # Bubblecomplete
 
 <p>
-  <a href="https://pkg.go.dev/github.com/dotopototo/bubblecomplete"><img src="https://pkg.go.dev/badge/github.com/dotopototo/bubblecomplete.svg" alt="Go Reference"></a>
+  <a href="https://pkg.go.dev/github.com/dotopototo/bubblecomplete/v2"><img src="https://pkg.go.dev/badge/github.com/dotopototo/bubblecomplete/v2.svg" alt="Go Reference"></a>
   <a href="https://github.com/DotoPototo/bubblecomplete/releases"><img src="https://img.shields.io/github/v/release/DotoPototo/bubblecomplete?include_prereleases&sort=semver" alt="Latest Release"></a>
   <a href="https://github.com/DotoPototo/bubblecomplete/actions/workflows/ci.yml"><img src="https://github.com/DotoPototo/bubblecomplete/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="https://goreportcard.com/report/github.com/dotopototo/bubblecomplete"><img src="https://goreportcard.com/badge/github.com/dotopototo/bubblecomplete" alt="Go Report"></a>
@@ -24,7 +24,7 @@ A polished command-prompt component for [Bubble Tea](https://github.com/charmbra
 ## Install
 
 ```shell
-go get github.com/dotopototo/bubblecomplete
+go get github.com/dotopototo/bubblecomplete/v2
 ```
 
 ## Defining commands
@@ -47,7 +47,7 @@ var commands = []*bubblecomplete.Command{
 }
 ```
 
-Argument types: `StringArgument`, `IntArgument`, `FloatArgument`, `BoolArgument`, `FileArgument`, `DirArgument`, `FileDirArgument`. Flags can be short (`-v`), long (`--verbose`), or PowerShell-style (`-Verbose`), and may be marked `Persistent: true` to propagate to subcommands. See the [godoc](https://pkg.go.dev/github.com/dotopototo/bubblecomplete#Command) for the full struct surface.
+Argument types: `StringArgument`, `IntArgument`, `FloatArgument`, `BoolArgument`, `FileArgument`, `DirArgument`, `FileDirArgument`. Flags can be short (`-v`), long (`--verbose`), or PowerShell-style (`-Verbose`), and may be marked `Persistent: true` to propagate to subcommands. See the [godoc](https://pkg.go.dev/github.com/dotopototo/bubblecomplete/v2#Command) for the full struct surface.
 
 ## Usage
 
@@ -58,7 +58,7 @@ import (
     "log"
 
     tea "charm.land/bubbletea/v2"
-    "github.com/dotopototo/bubblecomplete"
+    "github.com/dotopototo/bubblecomplete/v2"
 )
 
 type model struct {
@@ -107,7 +107,7 @@ The typed value gets a validity overlay:
 
 > **Invariant:** when the overlay is shown, green means Enter accepts. The classifier and submit-time validator share a resolver, so the colour can't lie about whether submitting would succeed. (The overlay is suppressed in a few documented cases — wide inputs that overflow the terminal, file cycling — where Enter still behaves correctly but the colour is absent.)
 
-Tilde expansion (`~`, `~/`), quote handling (`"…"`, `'…'`, equals-form `--path="…"`), auto-quote on basenames with spaces, and a subtle `+ N more` footer when the directory exceeds the candidate limit are all built in. Full behaviour, limits, and caveats live in the [godoc](https://pkg.go.dev/github.com/dotopototo/bubblecomplete#WithFilesystemCompletions).
+Tilde expansion (`~`, `~/`), quote handling (`"…"`, `'…'`, equals-form `--path="…"`), auto-quote on basenames with spaces, and a subtle `+ N more` footer when the directory exceeds the candidate limit are all built in. Full behaviour, limits, and caveats live in the [godoc](https://pkg.go.dev/github.com/dotopototo/bubblecomplete/v2#WithFilesystemCompletions).
 
 ## Configuration
 
@@ -121,9 +121,9 @@ Common options:
 | `ShowIcons`             | `false` | Type-indicator icons on each row |
 | `ShowDescriptions`      | `true`  | Render the description column |
 | `CompletionRows`        | `5`     | Visible rows before scrolling |
-| _…and more_             | —       | _Layout, scrollbar, icon glyphs, hidden files, candidate cap — see [`Model` godoc](https://pkg.go.dev/github.com/dotopototo/bubblecomplete#Model)_ |
+| _…and more_             | —       | _Layout, scrollbar, icon glyphs, hidden files, candidate cap — see [`Model` godoc](https://pkg.go.dev/github.com/dotopototo/bubblecomplete/v2#Model)_ |
 
-Every option has a matching `With*` construction function, and most are also mutable public fields on `Model` for runtime tweaks. Styles and key bindings live on their respective accessors: [`Styles()` / `SetStyles`](https://pkg.go.dev/github.com/dotopototo/bubblecomplete#Model.Styles) and [`KeyMap()` / `SetKeyMap`](https://pkg.go.dev/github.com/dotopototo/bubblecomplete#Model.KeyMap).
+Every option has a matching `With*` construction function, and most are also mutable public fields on `Model` for runtime tweaks. Styles and key bindings live on their respective accessors: [`Styles()` / `SetStyles`](https://pkg.go.dev/github.com/dotopototo/bubblecomplete/v2#Model.Styles) and [`KeyMap()` / `SetKeyMap`](https://pkg.go.dev/github.com/dotopototo/bubblecomplete/v2#Model.KeyMap).
 
 ## Roadmap
 

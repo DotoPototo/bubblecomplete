@@ -1,6 +1,6 @@
 package main
 
-import bubblecomplete "github.com/dotopototo/bubblecomplete"
+import bubblecomplete "github.com/dotopototo/bubblecomplete/v2"
 
 var demoCommands = []*bubblecomplete.Command{
 	{

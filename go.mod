@@ -1,4 +1,4 @@
-module github.com/dotopototo/bubblecomplete
+module github.com/dotopototo/bubblecomplete/v2
 
 go 1.26.1
 
