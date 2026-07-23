@@ -205,6 +205,10 @@ func (m Model) showCompletionsRender() string {
 	rows := m.completionRows()
 	titleWidth, lineWidth := m.completionBoxWidth(rows)
 	completionsWidth := m.getCompletionsWidth(lineWidth)
+	// On narrow terminals the widest name can exceed the clamped box width.
+	// Cap the title column at the box too, or renderCompletionRow's descPad
+	// pads the (truncated) name back out past the clamp and rows overflow.
+	titleWidth = min(titleWidth, completionsWidth)
 
 	rendered := make([]string, len(rows))
 	for i, row := range rows {

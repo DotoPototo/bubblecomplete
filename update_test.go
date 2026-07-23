@@ -3,10 +3,12 @@ package bubblecomplete
 import (
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 
 	"charm.land/bubbles/v2/key"
 	tea "charm.land/bubbletea/v2"
+	"charm.land/lipgloss/v2"
 )
 
 // simulateTyping sends each character of text through the full Update cycle.
@@ -651,6 +653,33 @@ func TestRender_AcrossWidths(t *testing.T) {
 			}
 			m = simulateTyping(t, m, "git c")
 			_ = m.Render()
+		})
+	}
+}
+
+func TestRender_NarrowWidthRowsFitTerminal(t *testing.T) {
+	// A completion name wider than the clamped box must not push rows past
+	// the terminal width. Regression: showCompletionsRender passed the
+	// UNclamped titleWidth to renderCompletionRow, whose descPad padded the
+	// truncated name back out past the clamp — at width 40 a 48-cell name
+	// rendered 52-cell rows.
+	longName := "annotate-release-manifest-with-provenance-data-x"
+	cmds := []*Command{{Command: longName, Description: "does long things to release manifests"}}
+	for _, w := range []int{30, 40} {
+		t.Run(fmt.Sprintf("width=%d", w), func(t *testing.T) {
+			m, err := New(cmds, w)
+			if err != nil {
+				t.Fatal(err)
+			}
+			m = simulateTyping(t, m, "ann")
+			if len(m.completions) == 0 {
+				t.Fatal("setup: expected a completion for the long command name")
+			}
+			for i, line := range strings.Split(m.Render(), "\n") {
+				if got := lipgloss.Width(line); got > w {
+					t.Errorf("line %d renders %d cells, want ≤ %d: %q", i, got, w, line)
+				}
+			}
 		})
 	}
 }
