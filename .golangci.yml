@@ -32,7 +32,9 @@ linters:
     # Style / readability that pulls weight here
     - dupword
     - gocritic
+    - gosmopolitan
     - misspell
+    - recvcheck
     - unconvert
     - unparam
     - usestdlibvars
