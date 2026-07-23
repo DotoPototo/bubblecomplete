@@ -219,9 +219,13 @@ func (m Model) keyTab(forward bool) (Model, tea.Cmd) {
 
 	// Don't re-insert an already fully typed name. Path candidates are
 	// exempt: their names are bare basenames, so a suffix match doesn't mean
-	// "already inserted" ("sub/" matches a same-named child "sub").
-	if len(m.completions) == 1 && !m.pathState.active {
-		if strings.HasSuffix(trimmedInput, m.completions[0].getName()) {
+	// "already inserted" ("sub/" matches a same-named child "sub"). Checked
+	// by row type, not pathState.active — pathState can be active with zero
+	// candidates, in which case this is a normal fallback row and the guard
+	// must apply.
+	if len(m.completions) == 1 {
+		if _, isPath := m.completions[0].(pathCompletion); !isPath &&
+			strings.HasSuffix(trimmedInput, m.completions[0].getName()) {
 			return m, nil
 		}
 	}

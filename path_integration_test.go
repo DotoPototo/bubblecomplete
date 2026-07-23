@@ -614,6 +614,40 @@ func TestTabAcceptExactlyTypedFile(t *testing.T) {
 	}
 }
 
+// TestTabNoOpGuard_AppliesToFallbackRows pins the scope of the path
+// exemption on keyTab's single-match no-op guard: with pathState active but
+// ZERO candidates (empty dir), getCompletions falls back to normal rows, and
+// the guard must still apply to those. Typing exactly the positional's
+// display name and pressing Tab must stay a no-op, not enter cycling state
+// (completionIndex 0, holder set, row highlighted) on an info-only row.
+func TestTabNoOpGuard_AppliesToFallbackRows(t *testing.T) {
+	dir := t.TempDir() // empty: no path candidates for any prefix
+
+	m, err := New(pathTestCommands(), 500, WithFilesystemCompletions(true))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// "cat" declares positional {Name: "File"}; type its name as the value.
+	m = simulateTyping(t, m, "cat "+filepath.Join(dir, "File"))
+	if !m.pathState.active || len(m.pathState.candidates) != 0 {
+		t.Fatalf("setup: want active pathState with no candidates, got active=%v candidates=%d",
+			m.pathState.active, len(m.pathState.candidates))
+	}
+	if len(m.completions) != 1 || m.completions[0].getName() != "File" {
+		t.Fatalf("setup: want single fallback row named File, got %d rows", len(m.completions))
+	}
+
+	before := m.input.Value()
+	m, _ = m.Update(tea.KeyPressMsg{Code: tea.KeyTab})
+	if got := m.input.Value(); got != before {
+		t.Errorf("Tab changed value on info-only fallback row: %q -> %q", before, got)
+	}
+	if m.completionIndex != -1 || m.completionHolder != "" {
+		t.Errorf("Tab entered cycling state on fallback row: index=%d holder=%q",
+			m.completionIndex, m.completionHolder)
+	}
+}
+
 // TestPathStateActiveAcrossQuotedSpace guards activeFileArgument's
 // trailing-space bail-out being token-aware: a space typed inside an open
 // quote ("My Documents) is part of the value, and candidates plus the
