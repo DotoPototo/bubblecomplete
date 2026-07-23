@@ -119,8 +119,8 @@ type Model struct {
 // completion is the internal interface every completable entity implements.
 // It exists to unify rendering across [Command], [PositionalArgument], and
 // [Flag]. Kept unexported because external packages cannot implement it
-// (the methods are unexported); external extension is planned via the
-// Part 4 CompletionProvider API.
+// (the methods are unexported); a public extension point may be added in a
+// future release.
 type completion interface {
 	getName() string
 	getDescription() string

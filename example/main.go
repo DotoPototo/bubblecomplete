@@ -118,10 +118,13 @@ func run() error {
 			return err
 		}
 		if err := pprof.StartCPUProfile(cpu); err != nil {
+			cpu.Close()
 			return err
 		}
-		// Defers run LIFO; write snapshots after CPU profiling has stopped.
+		// Defers run LIFO: stop profiling (flushes cpu.prof), close the
+		// file, then write the snapshot profiles.
 		defer writeSnapshotProfiles()
+		defer cpu.Close()
 		defer pprof.StopCPUProfile()
 	}
 
