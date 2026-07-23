@@ -4,6 +4,7 @@ import (
 	"slices"
 	"strings"
 	"unicode"
+	"unicode/utf8"
 )
 
 func (m Model) getCompletions() ([]completion, string) {
@@ -47,8 +48,13 @@ func sortCompletions(completions *[]completion) {
 		nameA := a.getName()
 		nameB := b.getName()
 
-		isPunctA := unicode.IsPunct(rune(nameA[0]))
-		isPunctB := unicode.IsPunct(rune(nameB[0]))
+		// Decode the first rune properly — indexing [0] would misclassify
+		// names starting with a multi-byte rune (the lead byte casts to an
+		// unrelated code point).
+		firstA, _ := utf8.DecodeRuneInString(nameA)
+		firstB, _ := utf8.DecodeRuneInString(nameB)
+		isPunctA := unicode.IsPunct(firstA)
+		isPunctB := unicode.IsPunct(firstB)
 
 		if isPunctA && !isPunctB {
 			return 1
